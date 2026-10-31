@@ -1,4 +1,7 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api').replace(/\/$/, '');
+const defaultApiBase = import.meta.env.PROD
+  ? 'https://neet.cybals.com/api'
+  : 'http://127.0.0.1:8000/api';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || defaultApiBase).replace(/\/$/, '');
 const TOKEN_KEY = 'neet-prep/backend-token';
 
 export function getApiToken(): string { return localStorage.getItem(TOKEN_KEY) || ''; }
