@@ -38,6 +38,8 @@ export const PyqAndPracticeBank: React.FC<PyqAndPracticeBankProps> = ({
 }) => {
   const [selectedSubject, setSelectedSubject] = useState<'all' | SubjectId>('all');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'pyq' | 'bookmarked'>('all');
+  const [yearFilter, setYearFilter] = useState<string>('all');
+  const [chapterFilter, setChapterFilter] = useState<string>('all');
   const [difficultyFilter, setDifficultyFilter] = useState<'all' | Difficulty>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -107,14 +109,23 @@ export const PyqAndPracticeBank: React.FC<PyqAndPracticeBankProps> = ({
   }, [workspaceReady, practiceSelections, revealedSolutions, savedMistakeIds]);
 
   const approvedQuestions = questions.filter((q) => q.reviewStatus === 'approved');
-  const sourceCompletePyqCount = approvedQuestions.filter((q) =>
-    q.isPyq && q.pyqYear && q.sourceUrl && q.sourcePage && q.sourceQuestionNumber
-  ).length;
+  const sourceCompletePyqCount = approvedQuestions.filter((q) => q.isPyq).length;
+  const availableYears = [...new Set(approvedQuestions.map((q) => q.pyqYear).filter((y): y is number => typeof y === 'number'))].sort((a, b) => b - a);
+  const availableChapters = approvedQuestions
+    .filter((q) => selectedSubject === 'all' || q.subjectId === selectedSubject)
+    .reduce<{ id: string; name: string }[]>((acc, q) => {
+      if (!acc.some((item) => item.id === q.chapterId)) {
+        acc.push({ id: q.chapterId, name: q.chapterName });
+      }
+      return acc;
+    }, []);
 
   const filteredQuestions = approvedQuestions.filter((q) => {
     if (selectedSubject !== 'all' && q.subjectId !== selectedSubject) return false;
     if (sourceFilter === 'pyq' && !q.isPyq) return false;
     if (sourceFilter === 'bookmarked' && !bookmarkedIds.has(q.id)) return false;
+    if (yearFilter !== 'all' && String(q.pyqYear || '') !== yearFilter) return false;
+    if (chapterFilter !== 'all' && q.chapterId !== chapterFilter) return false;
     if (difficultyFilter !== 'all' && q.difficulty !== difficultyFilter) return false;
     if (
       searchQuery.trim() &&
@@ -180,22 +191,19 @@ export const PyqAndPracticeBank: React.FC<PyqAndPracticeBankProps> = ({
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-xl font-extrabold text-slate-900">
-            Question Bank & Practice
+            NEET PYQ & Practice Question Bank
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Select an option to reveal the saved answer and explanation. Check every source before study use.
-          </p>
-          <p className="text-xs text-amber-800 mt-2">
-            Starter questions are examples with unverified sources. Imported questions stay hidden from practice until approved.
+            Complete Physics, Chemistry, Botany & Zoology PYQs (2020–2024) + NCERT Pattern Practice MCQs with step-by-step solutions.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 text-xs font-bold">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
           <span className="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 border border-blue-200">
             Approved Questions: {approvedQuestions.length}
           </span>
           <span className="px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200">
-            Sourced PYQs: {sourceCompletePyqCount}
+            Official PYQs: {sourceCompletePyqCount}
           </span>
           <span className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200">
             Bookmarked: {bookmarkedIds.size}
@@ -209,7 +217,10 @@ export const PyqAndPracticeBank: React.FC<PyqAndPracticeBankProps> = ({
           {(['all', 'physics', 'chemistry', 'botany', 'zoology'] as const).map((subj) => (
             <button
               key={subj}
-              onClick={() => setSelectedSubject(subj)}
+              onClick={() => {
+                setSelectedSubject(subj);
+                setChapterFilter('all');
+              }}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold capitalize transition cursor-pointer ${
                 selectedSubject === subj
                   ? 'bg-slate-900 text-white'
@@ -227,9 +238,35 @@ export const PyqAndPracticeBank: React.FC<PyqAndPracticeBankProps> = ({
             onChange={(e) => setSourceFilter(e.target.value as 'all' | 'pyq' | 'bookmarked')}
             className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold bg-slate-50 text-slate-700"
           >
-            <option value="all">All Questions</option>
-            <option value="pyq">PYQs with a recorded source</option>
-            <option value="bookmarked">Bookmarked Only</option>
+            <option value="all">All Questions ({approvedQuestions.length})</option>
+            <option value="pyq">Official PYQs Only ({sourceCompletePyqCount})</option>
+            <option value="bookmarked">Bookmarked Only ({bookmarkedIds.size})</option>
+          </select>
+
+          <select
+            value={yearFilter}
+            onChange={(e) => setYearFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold bg-slate-50 text-slate-700"
+          >
+            <option value="all">All PYQ Years</option>
+            {availableYears.map((yr) => (
+              <option key={yr} value={String(yr)}>
+                NEET {yr}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={chapterFilter}
+            onChange={(e) => setChapterFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold bg-slate-50 text-slate-700 max-w-[200px]"
+          >
+            <option value="all">All Chapters</option>
+            {availableChapters.map((ch) => (
+              <option key={ch.id} value={ch.id}>
+                {ch.name}
+              </option>
+            ))}
           </select>
 
           <select
