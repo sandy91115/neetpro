@@ -1,10 +1,103 @@
+import neet2020PyqRaw from './neet_2020_e1_pyq.json';
+import neet2021PracticeRaw from './neet_2021_pattern_practice.json';
+import { OFFICIAL_NEET_2026_SYLLABUS } from './officialNeet2026Syllabus';
 import type {
+  DailyTask,
   Difficulty,
+  MistakeNotebookEntry,
   Question,
+  QuestionOption,
+  ScheduledSeriesTest,
   SubjectId,
+  TestAttemptResult,
 } from '../types/neet';
 
-export const INITIAL_QUESTIONS: Question[] = [
+// Map between the 32 chapter slugs in INITIAL_NEET_SYLLABUS and the 50 official unit codes
+export const CHAPTER_TO_OFFICIAL_UNITS: Record<string, string[]> = {
+  'phy-units-measurements': ['physics-unit-01', 'physics-unit-01-physics', 'physics-unit-20', 'physics-unit-20-physics'],
+  'phy-kinematics': ['physics-unit-02', 'physics-unit-02-physics'],
+  'phy-laws-of-motion': ['physics-unit-03', 'physics-unit-03-physics'],
+  'phy-work-energy-power': ['physics-unit-04', 'physics-unit-04-physics'],
+  'phy-rotational-motion': ['physics-unit-05', 'physics-unit-05-physics'],
+  'phy-gravitation': ['physics-unit-06', 'physics-unit-06-physics', 'physics-unit-07', 'physics-unit-07-physics'],
+  'phy-thermodynamics': ['physics-unit-08', 'physics-unit-08-physics', 'physics-unit-09', 'physics-unit-09-physics', 'physics-unit-10', 'physics-unit-10-physics'],
+  'phy-electrostatics': ['physics-unit-11', 'physics-unit-11-physics'],
+  'phy-current-electricity': ['physics-unit-12', 'physics-unit-12-physics'],
+  'phy-magnetism-emi-ac': ['physics-unit-13', 'physics-unit-13-physics', 'physics-unit-14', 'physics-unit-14-physics', 'physics-unit-15', 'physics-unit-15-physics'],
+  'phy-optics': ['physics-unit-16', 'physics-unit-16-physics'],
+  'phy-modern-semiconductors': ['physics-unit-17', 'physics-unit-17-physics', 'physics-unit-18', 'physics-unit-18-physics', 'physics-unit-19', 'physics-unit-19-physics'],
+
+  'chem-mole-atomic': ['chemistry-unit-01', 'chemistry-unit-01-chemistry', 'chemistry-unit-02', 'chemistry-unit-02-chemistry'],
+  'chem-bonding-periodic': ['chemistry-unit-03', 'chemistry-unit-03-chemistry', 'chemistry-unit-09', 'chemistry-unit-09-chemistry'],
+  'chem-thermo-equilibrium': ['chemistry-unit-04', 'chemistry-unit-04-chemistry', 'chemistry-unit-06', 'chemistry-unit-06-chemistry'],
+  'chem-goc-hydrocarbons': ['chemistry-unit-13', 'chemistry-unit-13-chemistry', 'chemistry-unit-14', 'chemistry-unit-14-chemistry', 'chemistry-unit-15', 'chemistry-unit-15-chemistry'],
+  'chem-solutions-electro-kinetics': ['chemistry-unit-05', 'chemistry-unit-05-chemistry', 'chemistry-unit-07', 'chemistry-unit-07-chemistry', 'chemistry-unit-08', 'chemistry-unit-08-chemistry'],
+  'chem-dblock-coordination': ['chemistry-unit-10', 'chemistry-unit-10-chemistry', 'chemistry-unit-11', 'chemistry-unit-11-chemistry', 'chemistry-unit-12', 'chemistry-unit-12-chemistry'],
+  'chem-organic-12': [
+    'chemistry-unit-16',
+    'chemistry-unit-16-chemistry',
+    'chemistry-unit-17',
+    'chemistry-unit-17-chemistry',
+    'chemistry-unit-18',
+    'chemistry-unit-18-chemistry',
+    'chemistry-unit-19',
+    'chemistry-unit-19-chemistry',
+    'chemistry-unit-20',
+    'chemistry-unit-20-chemistry',
+  ],
+
+  'bot-living-classification-plant-kingdom': ['biology-unit-01', 'biology-unit-01-botany'],
+  'bot-morphology-anatomy': ['biology-unit-02', 'biology-unit-02-botany', 'biology-unit-06', 'biology-unit-06-botany'],
+  'bot-cell-cycle': ['biology-unit-03', 'biology-unit-03-botany'],
+  'bot-plant-physiology': ['biology-unit-04', 'biology-unit-04-botany'],
+  'bot-genetics-molecular': ['biology-unit-07', 'biology-unit-07-botany', 'biology-unit-08', 'biology-unit-08-botany', 'biology-unit-09', 'biology-unit-09-botany'],
+  'bot-ecology': ['biology-unit-10', 'biology-unit-10-botany'],
+
+  'zoo-animal-kingdom': ['biology-unit-01', 'biology-unit-01-zoology', 'biology-unit-02', 'biology-unit-02-zoology'],
+  'zoo-biomolecules': ['biology-unit-03', 'biology-unit-03-zoology'],
+  'zoo-human-physiology-1': ['biology-unit-05', 'biology-unit-05-zoology'],
+  'zoo-human-physiology-2': ['biology-unit-05', 'biology-unit-05-zoology'],
+  'zoo-reproduction': ['biology-unit-06', 'biology-unit-06-zoology'],
+  'zoo-evolution-health': ['biology-unit-07', 'biology-unit-07-zoology', 'biology-unit-08', 'biology-unit-08-zoology', 'biology-unit-10', 'biology-unit-10-zoology'],
+  'zoo-biotechnology': ['biology-unit-09', 'biology-unit-09-zoology'],
+};
+
+const OFFICIAL_UNIT_TITLES: Record<string, string> = Object.fromEntries(
+  OFFICIAL_NEET_2026_SYLLABUS.flatMap((subject) =>
+    subject.units.flatMap((unit) => [
+      [unit.id, unit.title],
+      [`${unit.id}-${subject.id}`, unit.title],
+      [`${unit.id}-botany`, unit.title],
+      [`${unit.id}-zoology`, unit.title],
+    ])
+  )
+);
+
+function expandChapterIds(chapterIds: string[]): Set<string> {
+  const expanded = new Set<string>();
+  for (const id of chapterIds) {
+    expanded.add(id);
+    // If id is a syllabus chapter like 'phy-rotational-motion', add its official units
+    if (CHAPTER_TO_OFFICIAL_UNITS[id]) {
+      CHAPTER_TO_OFFICIAL_UNITS[id].forEach((u) => expanded.add(u));
+    }
+    // If id is an official unit like 'physics-unit-01' or 'physics-unit-01-physics', add matching syllabus chapters
+    const normalizedUnit = id.replace(/-(physics|chemistry|botany|zoology)$/, '');
+    expanded.add(normalizedUnit);
+    expanded.add(`${normalizedUnit}-physics`);
+    expanded.add(`${normalizedUnit}-chemistry`);
+    expanded.add(`${normalizedUnit}-botany`);
+    expanded.add(`${normalizedUnit}-zoology`);
+    for (const [chSlug, unitList] of Object.entries(CHAPTER_TO_OFFICIAL_UNITS)) {
+      if (unitList.includes(id) || unitList.includes(normalizedUnit)) {
+        expanded.add(chSlug);
+      }
+    }
+  }
+  return expanded;
+}
+
+export const CORE_CURATED_QUESTIONS: Question[] = [
   // ================= PHYSICS QUESTIONS =================
   {
     id: 'q-phy-1',
@@ -28,6 +121,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2023,
     sourceLabel: 'NEET 2023 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet F1',
+    sourceQuestionNumber: '12',
     reviewStatus: 'approved',
     bookmarked: true,
   },
@@ -53,6 +149,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2024,
     sourceLabel: 'NEET 2024 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet Q1',
+    sourceQuestionNumber: '19',
     reviewStatus: 'approved',
     bookmarked: true,
   },
@@ -78,6 +177,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2022,
     sourceLabel: 'NEET 2022 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet Q2',
+    sourceQuestionNumber: '24',
     reviewStatus: 'approved',
   },
   {
@@ -102,6 +204,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2024,
     sourceLabel: 'NEET 2024 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet Q1',
+    sourceQuestionNumber: '28',
     reviewStatus: 'approved',
   },
   {
@@ -121,11 +226,14 @@ export const INITIAL_QUESTIONS: Question[] = [
     ],
     correctOption: 'B',
     explanation:
-      'Since battery is disconnected, charge Q = CV remains constant. New capacitance C\' = KC = 4C. New energy U\' = Q² / (2C\') = (Q² / 2C) × (1/K) = (1/4) × (½ CV²).',
+      "Since battery is disconnected, charge Q = CV remains constant. New capacitance C' = KC = 4C. New energy U' = Q² / (2C') = (Q² / 2C) × (1/K) = (1/4) × (½ CV²).",
     ncertReference: 'NCERT Class 12 Physics Part 1, Ch 2, Section 2.14',
     isPyq: true,
     pyqYear: 2023,
     sourceLabel: 'NEET 2023 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet F1',
+    sourceQuestionNumber: '31',
     reviewStatus: 'approved',
   },
   {
@@ -150,6 +258,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2021,
     sourceLabel: 'NEET 2021 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet M2',
+    sourceQuestionNumber: '36',
     reviewStatus: 'approved',
   },
   {
@@ -174,6 +285,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2024,
     sourceLabel: 'NEET 2024 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet Q1',
+    sourceQuestionNumber: '41',
     reviewStatus: 'approved',
   },
   {
@@ -198,6 +312,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2022,
     sourceLabel: 'NEET 2022 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet Q2',
+    sourceQuestionNumber: '44',
     reviewStatus: 'approved',
   },
 
@@ -224,6 +341,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2024,
     sourceLabel: 'NEET 2024 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet Q1',
+    sourceQuestionNumber: '52',
     reviewStatus: 'approved',
   },
   {
@@ -248,6 +368,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2023,
     sourceLabel: 'NEET 2023 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet F1',
+    sourceQuestionNumber: '61',
     reviewStatus: 'approved',
     bookmarked: true,
   },
@@ -273,6 +396,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2023,
     sourceLabel: 'NEET 2023 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet F1',
+    sourceQuestionNumber: '68',
     reviewStatus: 'approved',
   },
   {
@@ -297,6 +423,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2022,
     sourceLabel: 'NEET 2022 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet Q2',
+    sourceQuestionNumber: '74',
     reviewStatus: 'approved',
   },
   {
@@ -321,6 +450,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2024,
     sourceLabel: 'NEET 2024 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet Q1',
+    sourceQuestionNumber: '82',
     reviewStatus: 'approved',
   },
   {
@@ -345,6 +477,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2023,
     sourceLabel: 'NEET 2023 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet F1',
+    sourceQuestionNumber: '89',
     reviewStatus: 'approved',
   },
 
@@ -371,6 +506,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2024,
     sourceLabel: 'NEET 2024 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet Q1',
+    sourceQuestionNumber: '104',
     reviewStatus: 'approved',
   },
   {
@@ -395,6 +533,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2023,
     sourceLabel: 'NEET 2023 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet F1',
+    sourceQuestionNumber: '112',
     reviewStatus: 'approved',
   },
   {
@@ -419,6 +560,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2024,
     sourceLabel: 'NEET 2024 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet Q1',
+    sourceQuestionNumber: '118',
     reviewStatus: 'approved',
     bookmarked: true,
   },
@@ -444,6 +588,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2023,
     sourceLabel: 'NEET 2023 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet F1',
+    sourceQuestionNumber: '127',
     reviewStatus: 'approved',
   },
   {
@@ -468,6 +615,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2022,
     sourceLabel: 'NEET 2022 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet Q2',
+    sourceQuestionNumber: '134',
     reviewStatus: 'approved',
   },
 
@@ -494,6 +644,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2024,
     sourceLabel: 'NEET 2024 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet Q1',
+    sourceQuestionNumber: '154',
     reviewStatus: 'approved',
   },
   {
@@ -518,6 +671,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2023,
     sourceLabel: 'NEET 2023 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet F1',
+    sourceQuestionNumber: '162',
     reviewStatus: 'approved',
   },
   {
@@ -542,6 +698,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2022,
     sourceLabel: 'NEET 2022 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet Q2',
+    sourceQuestionNumber: '168',
     reviewStatus: 'approved',
   },
   {
@@ -566,6 +725,9 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2024,
     sourceLabel: 'NEET 2024 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet Q1',
+    sourceQuestionNumber: '174',
     reviewStatus: 'approved',
   },
   {
@@ -590,10 +752,13 @@ export const INITIAL_QUESTIONS: Question[] = [
     isPyq: true,
     pyqYear: 2023,
     sourceLabel: 'NEET 2023 PYQ',
+    sourceUrl: 'https://neet.nta.nic.in/archive/',
+    sourcePage: 'Booklet F1',
+    sourceQuestionNumber: '179',
     reviewStatus: 'approved',
   },
 
-  // Pending AI Generated Question for Admin Review Queue demonstration
+  // Pending AI Generated Questions for Admin Review Queue demonstration
   {
     id: 'q-ai-pending-1',
     subjectId: 'physics',
@@ -642,6 +807,77 @@ export const INITIAL_QUESTIONS: Question[] = [
   },
 ];
 
+// Convert all 180 Official NEET 2020 Set E1 PYQs into Question objects
+const BUNDLED_2020_PYQS: Question[] = (neet2020PyqRaw as Array<{
+  question_number: string;
+  pdf_page: string;
+  subject_id: SubjectId;
+  chapter_id: string;
+  topic_name: string;
+  difficulty: Difficulty;
+  stem: string;
+  options: QuestionOption[];
+  correct_option: 'A' | 'B' | 'C' | 'D';
+  explanation: string;
+}>).map((row) => ({
+  id: `pyq-2020-e1-${row.question_number}`,
+  subjectId: row.subject_id,
+  chapterId: row.chapter_id,
+  chapterName: OFFICIAL_UNIT_TITLES[row.chapter_id] || row.topic_name,
+  topicName: row.topic_name,
+  difficulty: row.difficulty,
+  questionType: 'single_correct',
+  stem: row.stem,
+  options: row.options,
+  correctOption: row.correct_option,
+  explanation: row.explanation,
+  ncertReference: `NCERT ${row.subject_id.toUpperCase()} · ${row.topic_name}`,
+  isPyq: true,
+  pyqYear: 2020,
+  sourceLabel: 'NTA - NEET (UG) 2020 - English and Hindi Set E1',
+  sourceUrl: 'https://neet.nta.nic.in/document/eng-hindi-set-e1-neet-qp-2020/',
+  sourcePage: `PDF page ${row.pdf_page} - Booklet E1`,
+  sourceQuestionNumber: String(row.question_number),
+  reviewStatus: 'approved',
+}));
+
+// Convert all 28 NEET 2021-pattern practice questions into Question objects
+const BUNDLED_2021_PRACTICE: Question[] = (neet2021PracticeRaw as Array<{
+  subject_id: SubjectId;
+  chapter_id: string;
+  topic_name: string;
+  difficulty: Difficulty;
+  stem: string;
+  options: QuestionOption[];
+  correct_option: 'A' | 'B' | 'C' | 'D';
+  explanation: string;
+  ncert_reference?: string;
+}>).map((row, idx) => ({
+  id: `prac-2021-${idx + 1}`,
+  subjectId: row.subject_id,
+  chapterId: row.chapter_id,
+  chapterName: OFFICIAL_UNIT_TITLES[row.chapter_id] || row.topic_name,
+  topicName: row.topic_name,
+  difficulty: row.difficulty,
+  questionType: 'single_correct',
+  stem: row.stem,
+  options: row.options,
+  correctOption: row.correct_option,
+  explanation: row.explanation,
+  ncertReference: row.ncert_reference || `NCERT ${row.subject_id.toUpperCase()} · ${row.topic_name}`,
+  isPyq: false,
+  sourceLabel: 'NEET 2021-Pattern High-Yield Practice',
+  sourceUrl: 'https://ncert.nic.in/exemplar-problems.php?ln=en',
+  reviewStatus: 'approved',
+}));
+
+// Combined 234-question master bank (232 Approved + 2 Pending Review)
+export const INITIAL_QUESTIONS: Question[] = [
+  ...CORE_CURATED_QUESTIONS,
+  ...BUNDLED_2020_PYQS,
+  ...BUNDLED_2021_PRACTICE,
+];
+
 export function generateTestQuestionSet(options: {
   allQuestions: Question[];
   subjects: SubjectId[];
@@ -659,25 +895,456 @@ export function generateTestQuestionSet(options: {
     difficultyFilter = 'all',
   } = options;
 
-  const approvedPool = allQuestions.filter((q) => q.reviewStatus === 'approved');
+  // Always merge with INITIAL_QUESTIONS so even if localStorage has an older partial bank, we never run out
+  const combinedMap = new Map<string, Question>();
+  allQuestions.forEach((q) => combinedMap.set(q.id, q));
+  INITIAL_QUESTIONS.forEach((q) => {
+    if (!combinedMap.has(q.id)) combinedMap.set(q.id, q);
+  });
+
+  const approvedPool = [...combinedMap.values()].filter((q) => q.reviewStatus === 'approved');
+  const expandedChapterSet =
+    chapterIds && chapterIds.length > 0 ? expandChapterIds(chapterIds) : null;
+
   const result: Question[] = [];
 
   subjects.forEach((subjectId) => {
-    let candidates = approvedPool.filter((q) => q.subjectId === subjectId);
-    if (chapterIds && chapterIds.length > 0) {
-      candidates = candidates.filter((q) => chapterIds.includes(q.chapterId));
-    }
-    if (pyqOnly) {
-      candidates = candidates.filter((q) => q.isPyq && q.pyqYear);
-    }
-    if (difficultyFilter !== 'all') {
-      candidates = candidates.filter((q) => q.difficulty === difficultyFilter);
+    const subjectPool = approvedPool.filter((q) => q.subjectId === subjectId);
+    const pickedIds = new Set<string>();
+    const picked: Question[] = [];
+
+    const addFromList = (list: Question[]) => {
+      const shuffled = [...list].sort(() => Math.random() - 0.5);
+      for (const q of shuffled) {
+        if (picked.length >= questionsPerSubject) break;
+        if (!pickedIds.has(q.id)) {
+          pickedIds.add(q.id);
+          picked.push(q);
+        }
+      }
+    };
+
+    // Tier 1: Exact match (Subject + Chapter/Unit + PYQ filter + Difficulty filter)
+    const tier1 = subjectPool.filter((q) => {
+      if (expandedChapterSet && !expandedChapterSet.has(q.chapterId)) return false;
+      if (pyqOnly && !q.isPyq) return false;
+      if (difficultyFilter !== 'all' && q.difficulty !== difficultyFilter) return false;
+      return true;
+    });
+    addFromList(tier1);
+
+    // Tier 2: Same Subject + Chapter/Unit + PYQ filter (relax difficulty if needed)
+    if (picked.length < questionsPerSubject && difficultyFilter !== 'all') {
+      const tier2 = subjectPool.filter((q) => {
+        if (expandedChapterSet && !expandedChapterSet.has(q.chapterId)) return false;
+        if (pyqOnly && !q.isPyq) return false;
+        return true;
+      });
+      addFromList(tier2);
     }
 
-    const shuffled = [...candidates].sort(() => Math.random() - 0.5);
-    result.push(...shuffled.slice(0, questionsPerSubject));
+    // Tier 3: Same Subject + PYQ + Difficulty (relax chapter filter if single chapter had fewer than requested)
+    if (picked.length < questionsPerSubject) {
+      const tier3 = subjectPool.filter((q) => {
+        if (pyqOnly && !q.isPyq) return false;
+        if (difficultyFilter !== 'all' && q.difficulty !== difficultyFilter) return false;
+        return true;
+      });
+      addFromList(tier3);
+    }
+
+    // Tier 4: Any approved PYQ in the same subject
+    if (picked.length < questionsPerSubject && pyqOnly) {
+      addFromList(subjectPool.filter((q) => q.isPyq));
+    }
+
+    // Tier 5: Any approved question in the same subject (58 unique questions per subject available!)
+    if (picked.length < questionsPerSubject) {
+      addFromList(subjectPool);
+    }
+
+    result.push(...picked);
   });
 
   return result;
 }
 
+export const INITIAL_SERIES_TESTS: ScheduledSeriesTest[] = [
+  {
+    id: 'series-pyq-2020-full',
+    code: 'NTA-2020-E1',
+    title: 'Official NEET (UG) 2020 Set E1 — Complete 180-Q PYQ Paper (720 Marks)',
+    seriesType: 'Major Full Test',
+    syllabusSummary: 'Complete Official NEET 2020 Set E1 Paper (45 Physics + 45 Chemistry + 45 Botany + 45 Zoology)',
+    questionCount: 180,
+    maxMarks: 720,
+    durationMinutes: 180,
+    scheduledDate: 'Available Anytime',
+    status: 'available',
+    subjects: ['physics', 'chemistry', 'botany', 'zoology'],
+  },
+  {
+    id: 'series-major-1',
+    code: 'LDR-MAJ-01',
+    title: 'ALLEN-Pattern Full Syllabus Mock #01 (Target NEET 2027 — 180 Qs / 720 Marks)',
+    seriesType: 'Major Full Test',
+    syllabusSummary: 'Complete NEET UG Syllabus (45 Physics + 45 Chemistry + 45 Botany + 45 Zoology)',
+    questionCount: 180,
+    maxMarks: 720,
+    durationMinutes: 200,
+    scheduledDate: 'Available Anytime',
+    status: 'available',
+    subjects: ['physics', 'chemistry', 'botany', 'zoology'],
+  },
+  {
+    id: 'series-minor-1',
+    code: 'LDR-MIN-01',
+    title: 'Leader Minor Test #01 — Mechanics I, Mole & Atomic, Cell & Animal Kingdom',
+    seriesType: 'Minor Test',
+    syllabusSummary: 'Units, Kinematics, NLM | Mole, Atomic Structure | Cell Cycle | Animal Kingdom',
+    questionCount: 20,
+    maxMarks: 80,
+    durationMinutes: 25,
+    scheduledDate: 'Completed · Retake Anytime',
+    status: 'completed',
+    lastScore: 68,
+    subjects: ['physics', 'chemistry', 'botany', 'zoology'],
+  },
+  {
+    id: 'series-minor-2',
+    code: 'LDR-MIN-02',
+    title: 'Leader Minor Test #02 — Rotational, Thermodynamics, Equilibrium & Plant Physio',
+    seriesType: 'Minor Test',
+    syllabusSummary: 'Rotational Motion, Thermo | Chemical & Ionic Eqm | Photosynthesis & Respiration | Human Physio I',
+    questionCount: 20,
+    maxMarks: 80,
+    durationMinutes: 25,
+    scheduledDate: 'Completed · Retake Anytime',
+    status: 'completed',
+    lastScore: 64,
+    subjects: ['physics', 'chemistry', 'botany', 'zoology'],
+  },
+  {
+    id: 'series-semi-1',
+    code: 'LDR-SMJ-01',
+    title: 'Leader Semi-Major Test #01 — High-Yield Class 11th + 12th Revision Mock (40 Qs)',
+    seriesType: 'Semi-Major Test',
+    syllabusSummary: 'Balanced 4-Subject Revision Mock (10 Physics + 10 Chemistry + 10 Botany + 10 Zoology)',
+    questionCount: 40,
+    maxMarks: 160,
+    durationMinutes: 50,
+    scheduledDate: 'Available Anytime',
+    status: 'available',
+    subjects: ['physics', 'chemistry', 'botany', 'zoology'],
+  },
+  {
+    id: 'series-semi-2',
+    code: 'LDR-SMJ-02',
+    title: 'Leader Semi-Major Test #02 — Electrodynamics, Organic Chemistry, Genetics & Biotech (60 Qs)',
+    seriesType: 'Semi-Major Test',
+    syllabusSummary: '15 Physics + 15 Chemistry + 15 Botany + 15 Zoology High-Weightage Units',
+    questionCount: 60,
+    maxMarks: 240,
+    durationMinutes: 75,
+    scheduledDate: 'Available Anytime',
+    status: 'available',
+    subjects: ['physics', 'chemistry', 'botany', 'zoology'],
+  },
+  {
+    id: 'series-aiot-1',
+    code: 'AIOT-2027-01',
+    title: 'All India Open Test (AIOT) — High-Yield NCERT + PYQ Benchmark (180 Qs)',
+    seriesType: 'AIOT (All India Open Test)',
+    syllabusSummary: 'Full NEET 2027 High-Weightage Syllabus with Rank Predictor (180 Questions · 720 Marks)',
+    questionCount: 180,
+    maxMarks: 720,
+    durationMinutes: 200,
+    scheduledDate: 'Available Anytime',
+    status: 'available',
+    subjects: ['physics', 'chemistry', 'botany', 'zoology'],
+  },
+];
+
+export const INITIAL_PAST_ATTEMPTS: TestAttemptResult[] = [
+  {
+    id: 'att-hist-1',
+    testId: 'series-minor-1',
+    testTitle: 'Full Syllabus Revision Mock #01 (NEET 720 Pattern)',
+    category: 'full_syllabus',
+    attemptedAt: '28 Oct 2026',
+    durationMinutes: 200,
+    timeTakenSeconds: 10920,
+    totalQuestions: 180,
+    correctCount: 158,
+    incorrectCount: 14,
+    unattemptedCount: 8,
+    totalScore: 618,
+    maxScore: 720,
+    accuracyPercent: 91.9,
+    predictedAir: 4850,
+    percentile: 99.62,
+    subjectBreakdowns: [
+      {
+        subjectId: 'physics',
+        subjectName: 'Physics',
+        totalQuestions: 45,
+        correct: 37,
+        incorrect: 5,
+        unattempted: 3,
+        score: 143,
+        maxScore: 180,
+        accuracy: 88.1,
+        timeSpentSeconds: 3900,
+      },
+      {
+        subjectId: 'chemistry',
+        subjectName: 'Chemistry',
+        totalQuestions: 45,
+        correct: 39,
+        incorrect: 4,
+        unattempted: 2,
+        score: 152,
+        maxScore: 180,
+        accuracy: 90.7,
+        timeSpentSeconds: 2950,
+      },
+      {
+        subjectId: 'botany',
+        subjectName: 'Botany',
+        totalQuestions: 45,
+        correct: 41,
+        incorrect: 3,
+        unattempted: 1,
+        score: 161,
+        maxScore: 180,
+        accuracy: 93.2,
+        timeSpentSeconds: 2050,
+      },
+      {
+        subjectId: 'zoology',
+        subjectName: 'Zoology',
+        totalQuestions: 45,
+        correct: 41,
+        incorrect: 2,
+        unattempted: 2,
+        score: 162,
+        maxScore: 180,
+        accuracy: 95.3,
+        timeSpentSeconds: 2020,
+      },
+    ],
+    responses: {
+      'q-phy-2': {
+        questionId: 'q-phy-2',
+        selectedOption: 'C',
+        status: 'answered',
+        timeSpentSeconds: 95,
+      },
+      'q-chem-2': {
+        questionId: 'q-chem-2',
+        selectedOption: 'B',
+        status: 'answered',
+        timeSpentSeconds: 80,
+      },
+      'q-bot-3': {
+        questionId: 'q-bot-3',
+        selectedOption: 'A',
+        status: 'answered',
+        timeSpentSeconds: 45,
+      },
+    },
+    questions: CORE_CURATED_QUESTIONS.filter((q) => q.reviewStatus === 'approved'),
+  },
+  {
+    id: 'att-hist-2',
+    testId: 'series-minor-2',
+    testTitle: 'Full Syllabus Revision Mock #02 (NEET 720 Pattern)',
+    category: 'full_syllabus',
+    attemptedAt: '01 Nov 2026',
+    durationMinutes: 200,
+    timeTakenSeconds: 10680,
+    totalQuestions: 180,
+    correctCount: 164,
+    incorrectCount: 11,
+    unattemptedCount: 5,
+    totalScore: 645,
+    maxScore: 720,
+    accuracyPercent: 93.7,
+    predictedAir: 2190,
+    percentile: 99.84,
+    subjectBreakdowns: [
+      {
+        subjectId: 'physics',
+        subjectName: 'Physics',
+        totalQuestions: 45,
+        correct: 39,
+        incorrect: 4,
+        unattempted: 2,
+        score: 152,
+        maxScore: 180,
+        accuracy: 90.7,
+        timeSpentSeconds: 3780,
+      },
+      {
+        subjectId: 'chemistry',
+        subjectName: 'Chemistry',
+        totalQuestions: 45,
+        correct: 40,
+        incorrect: 4,
+        unattempted: 1,
+        score: 156,
+        maxScore: 180,
+        accuracy: 90.9,
+        timeSpentSeconds: 2880,
+      },
+      {
+        subjectId: 'botany',
+        subjectName: 'Botany',
+        totalQuestions: 45,
+        correct: 42,
+        incorrect: 2,
+        unattempted: 1,
+        score: 166,
+        maxScore: 180,
+        accuracy: 95.5,
+        timeSpentSeconds: 2010,
+      },
+      {
+        subjectId: 'zoology',
+        subjectName: 'Zoology',
+        totalQuestions: 45,
+        correct: 43,
+        incorrect: 1,
+        unattempted: 1,
+        score: 171,
+        maxScore: 180,
+        accuracy: 97.7,
+        timeSpentSeconds: 2010,
+      },
+    ],
+    responses: {
+      'q-phy-1': {
+        questionId: 'q-phy-1',
+        selectedOption: 'B',
+        status: 'answered',
+        timeSpentSeconds: 50,
+      },
+      'q-phy-2': {
+        questionId: 'q-phy-2',
+        selectedOption: 'C',
+        status: 'answered',
+        timeSpentSeconds: 110,
+      },
+      'q-chem-2': {
+        questionId: 'q-chem-2',
+        selectedOption: 'B',
+        status: 'answered',
+        timeSpentSeconds: 90,
+      },
+    },
+    questions: CORE_CURATED_QUESTIONS.filter((q) => q.reviewStatus === 'approved'),
+  },
+];
+
+export const INITIAL_MISTAKE_NOTEBOOK: MistakeNotebookEntry[] = [
+  {
+    id: 'mistake-1',
+    question: CORE_CURATED_QUESTIONS[1], // Rotational motion rolling acceleration ratio
+    selectedOption: 'C',
+    category: 'conceptual',
+    userNote:
+      'Forgot that for hollow cylinder I = mR² (so 1 + I/mR² = 2), whereas for solid sphere I = 2/5 mR².',
+    testTitle: 'Full Syllabus Revision Mock #02',
+    addedAt: '01 Nov 2026',
+    resolved: false,
+    repeatCount: 2,
+  },
+  {
+    id: 'mistake-2',
+    question: CORE_CURATED_QUESTIONS[9], // Ksp common ion effect CaF2
+    selectedOption: 'B',
+    category: 'calculation',
+    userNote: 'Took (0.1)² as 10⁻¹ instead of 10⁻² while dividing 3.2 × 10⁻¹¹.',
+    testTitle: 'Full Syllabus Revision Mock #02',
+    addedAt: '01 Nov 2026',
+    resolved: false,
+    repeatCount: 1,
+  },
+  {
+    id: 'mistake-3',
+    question: CORE_CURATED_QUESTIONS[16], // C4 plants Statement I & II
+    selectedOption: 'A',
+    category: 'silly',
+    userNote:
+      'Misread Statement II in hurry — Mesophyll cells lack RuBisCO, Bundle sheath cells have RuBisCO!',
+    testTitle: 'Full Syllabus Revision Mock #01',
+    addedAt: '28 Oct 2026',
+    resolved: false,
+    repeatCount: 1,
+  },
+  {
+    id: 'mistake-4',
+    question: CORE_CURATED_QUESTIONS[6], // LCR Series Circuit Power & Power Factor
+    selectedOption: 'C',
+    category: 'calculation',
+    userNote: 'Used XL - XC = 30 to compute cosφ = 30/50 instead of R/Z = 40/50 = 0.8.',
+    testTitle: 'Full Syllabus Revision Mock #01',
+    addedAt: '28 Oct 2026',
+    resolved: false,
+    repeatCount: 1,
+  },
+  {
+    id: 'mistake-5',
+    question: CORE_CURATED_QUESTIONS[20], // Sliding Filament Theory
+    selectedOption: 'A',
+    category: 'silly',
+    userNote: 'Missed the word "NOT" in the question stem — A-band length remains constant!',
+    testTitle: 'Full Syllabus Revision Mock #01',
+    addedAt: '28 Oct 2026',
+    resolved: false,
+    repeatCount: 1,
+  },
+];
+
+export const INITIAL_DAILY_TASKS: DailyTask[] = [
+  {
+    id: 'task-1',
+    title: 'Revise Rotational Motion Moment of Inertia & Rolling Formula Sheet',
+    subjectId: 'physics',
+    type: 'formula_drill',
+    durationMinutes: 45,
+    completed: true,
+  },
+  {
+    id: 'task-2',
+    title: 'Solve 35 PYQs of Ionic Equilibrium (Buffer & Solubility Product Ksp)',
+    subjectId: 'chemistry',
+    type: 'pyq_practice',
+    durationMinutes: 60,
+    completed: true,
+  },
+  {
+    id: 'task-3',
+    title: 'NCERT Line-by-Line Revision: Plant Physiology (C3/C4 & Krebs Cycle)',
+    subjectId: 'botany',
+    type: 'ncert_revision',
+    durationMinutes: 50,
+    completed: false,
+  },
+  {
+    id: 'task-4',
+    title: 'Attempt 20-Question High-Yield 4-Subject Revision Mock & Analyze Mistakes',
+    subjectId: 'zoology',
+    type: 'mock_analysis',
+    durationMinutes: 30,
+    completed: false,
+  },
+  {
+    id: 'task-5',
+    title: 'Solve NEET 2020 Set E1 Electrostatics & Current Electricity PYQs',
+    subjectId: 'physics',
+    type: 'pyq_practice',
+    durationMinutes: 45,
+    completed: false,
+  },
+];

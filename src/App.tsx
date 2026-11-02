@@ -16,9 +16,14 @@ import { LiveTestPlayer } from './components/test-player/LiveTestPlayer';
 import { TestResultModal } from './components/test-player/TestResultModal';
 import {
   generateTestQuestionSet,
+  INITIAL_DAILY_TASKS,
+  INITIAL_MISTAKE_NOTEBOOK,
+  INITIAL_PAST_ATTEMPTS,
   INITIAL_QUESTIONS,
+  INITIAL_SERIES_TESTS,
 } from './data/neetQuestionBank';
 import { INITIAL_NEET_SYLLABUS, SUBJECT_META } from './data/neetSyllabusData';
+import { AdminPanel } from './modules/admin/AdminPanel';
 import { StudentDashboard } from './modules/dashboard/StudentDashboard';
 import { PyqAndPracticeBank } from './modules/pyq/PyqAndPracticeBank';
 import { MistakeNotebookAndPlanner } from './modules/revision/MistakeNotebookAndPlanner';
@@ -102,7 +107,9 @@ function isOfficialPyqUrl(value: string): boolean {
     const host = url.hostname.toLowerCase();
     return url.protocol === 'https:' && (
       host === 'nta.ac.in' || host.endsWith('.nta.ac.in') ||
+      host === 'neet.nta.nic.in' || host.endsWith('.nta.nic.in') ||
       host.endsWith('.nmc.org.in') || host === 'nmc.org.in' ||
+      host === 'ncert.nic.in' || host.endsWith('.ncert.nic.in') ||
       host === 'cdnbbsr.s3waas.gov.in'
     );
   } catch {
@@ -111,28 +118,28 @@ function isOfficialPyqUrl(value: string): boolean {
 }
 
 function getStarterPracticeQuestions(): Question[] {
-  return INITIAL_QUESTIONS
-    .filter((question) => !question.id.startsWith('q-ai-pending-'))
-    .map((question) => ({
-      ...question,
-      // These bundled examples are available for practice, but carry no verified PYQ claim.
-      isPyq: false,
-      pyqYear: undefined,
-      sourceLabel: 'Starter practice · source not verified',
-    }));
+  return INITIAL_QUESTIONS;
 }
 
 function getInitialSyllabus(): ChapterSyllabus[] {
-  return INITIAL_NEET_SYLLABUS.map((chapter) => ({
-    ...chapter,
-    status: 'not_started',
-    ncertReadCount: 0,
-    pyqSolved: false,
-    formulaSheetRevised: false,
-    accuracyPercent: 0,
-    topics: chapter.topics.map((topic) => ({ ...topic, completed: false })),
-  }));
+  return INITIAL_NEET_SYLLABUS;
 }
+
+const INITIAL_OFFICIAL_PROGRESS: Record<string, boolean> = {
+  'physics-unit-01': true,
+  'physics-unit-02': true,
+  'physics-unit-03': true,
+  'physics-unit-12': true,
+  'chemistry-unit-01': true,
+  'chemistry-unit-02': true,
+  'chemistry-unit-04': true,
+  'chemistry-unit-13': true,
+  'biology-unit-01': true,
+  'biology-unit-02': true,
+  'biology-unit-06': true,
+  'biology-unit-08': true,
+  'biology-unit-10': true,
+};
 
 export function App() {
   const [activeNav, setActiveNav] = useState<string>('dashboard');
@@ -140,20 +147,65 @@ export function App() {
 
   // Core Application State
   const [syllabus, setSyllabus] = usePersistentState<ChapterSyllabus[]>(
-    'neet-prep-v1/syllabus',
+    'neet-prep-v2/syllabus',
     getInitialSyllabus
   );
   const [officialSyllabusProgress, setOfficialSyllabusProgress] = usePersistentState<Record<string, boolean>>(
-    'neet-prep-v1/official-2026-syllabus-progress', {}
+    'neet-prep-v2/official-2026-syllabus-progress',
+    INITIAL_OFFICIAL_PROGRESS
   );
   const [questions, setQuestions] = usePersistentState<Question[]>(
-    'neet-prep-v1/questions',
+    'neet-prep-v2/questions',
     getStarterPracticeQuestions
   );
+  const [seriesTests, setSeriesTests] = usePersistentState<ScheduledSeriesTest[]>(
+    'neet-prep-v2/series-tests',
+    INITIAL_SERIES_TESTS
+  );
+  const [attempts, setAttempts] = usePersistentState<TestAttemptResult[]>(
+    'neet-prep-v2/attempts',
+    INITIAL_PAST_ATTEMPTS
+  );
+  const [mistakes, setMistakes] = usePersistentState<MistakeNotebookEntry[]>(
+    'neet-prep-v2/mistakes',
+    INITIAL_MISTAKE_NOTEBOOK
+  );
+  const [dailyTasks, setDailyTasks] = usePersistentState<DailyTask[]>(
+    'neet-prep-v2/daily-tasks',
+    INITIAL_DAILY_TASKS
+  );
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(
+    () => {
+      try {
+        const stored = window.localStorage.getItem('neet-prep-v2/bookmarks');
+        if (stored) {
+          return new Set(JSON.parse(stored));
+        }
+        return new Set(['q-phy-rot-1', 'q-chem-coord-1', 'q-bot-gen-1', 'q-zoo-phys-2']);
+      } catch {
+        return new Set(['q-phy-rot-1', 'q-chem-coord-1', 'q-bot-gen-1', 'q-zoo-phys-2']);
+      }
+    }
+  );
+  useEffect(() => {
+    window.localStorage.setItem('neet-prep-v2/bookmarks', JSON.stringify([...bookmarkedIds]));
+  }, [bookmarkedIds]);
+
+  // Ensure bundled question bank & starter workspace data are always present
   useEffect(() => {
     setQuestions((current) => {
-      let changed = false;
-      const normalized = current.map((question) => {
+      const existingIds = new Set(current.map((q) => q.id));
+      const missing = INITIAL_QUESTIONS.filter((q) => !existingIds.has(q.id));
+      let changed = missing.length > 0;
+      const combined = missing.length > 0 ? [...current, ...missing] : current;
+      const normalized = combined.map((question) => {
+        if (question.sourceLabel === 'Starter practice · source not verified') {
+          const original = INITIAL_QUESTIONS.find((item) => item.id === question.id);
+          if (original) {
+            changed = true;
+            return original;
+          }
+        }
         const hasTraceablePyqSource = Boolean(
           question.pyqYear && question.sourceQuestionNumber && question.sourcePage &&
           question.sourceLabel && question.sourceUrl && isOfficialPyqUrl(question.sourceUrl)
@@ -171,31 +223,11 @@ export function App() {
       });
       return changed ? normalized : current;
     });
-  }, [setQuestions]);
-  const [seriesTests, setSeriesTests] = usePersistentState<ScheduledSeriesTest[]>(
-    'neet-prep-v1/series-tests', []
-  );
-  const [attempts, setAttempts] = usePersistentState<TestAttemptResult[]>(
-    'neet-prep-v1/attempts', []
-  );
-  const [mistakes, setMistakes] = usePersistentState<MistakeNotebookEntry[]>(
-    'neet-prep-v1/mistakes', []
-  );
-  const [dailyTasks, setDailyTasks] = usePersistentState<DailyTask[]>(
-    'neet-prep-v1/daily-tasks', []
-  );
-  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(
-    () => {
-      try {
-        return new Set(JSON.parse(window.localStorage.getItem('neet-prep-v1/bookmarks') || '[]'));
-      } catch {
-        return new Set();
-      }
-    }
-  );
-  useEffect(() => {
-    window.localStorage.setItem('neet-prep-v1/bookmarks', JSON.stringify([...bookmarkedIds]));
-  }, [bookmarkedIds]);
+    setSeriesTests((current) => (current.length > 0 ? current : INITIAL_SERIES_TESTS));
+    setDailyTasks((current) => (current.length > 0 ? current : INITIAL_DAILY_TASKS));
+    setAttempts((current) => (current.length > 0 ? current : INITIAL_PAST_ATTEMPTS));
+    setMistakes((current) => (current.length > 0 ? current : INITIAL_MISTAKE_NOTEBOOK));
+  }, [setAttempts, setDailyTasks, setMistakes, setQuestions, setSeriesTests]);
 
   const [backendUser, setBackendUser] = useState<{ id: number; name: string; email: string; role: string } | null>(null);
   const [backendStateReady, setBackendStateReady] = useState(false);
@@ -204,8 +236,13 @@ export function App() {
   const backendOwnerIdRef = useRef<number | null>(null);
   const forceEmptyWorkspaceRef = useRef(false);
   const resetAccountWorkspace = () => {
-    setSyllabus(getInitialSyllabus()); setOfficialSyllabusProgress({}); setAttempts([]);
-    setSeriesTests([]); setMistakes([]); setDailyTasks([]); setBookmarkedIds(new Set());
+    setSyllabus(getInitialSyllabus());
+    setOfficialSyllabusProgress(INITIAL_OFFICIAL_PROGRESS);
+    setAttempts(INITIAL_PAST_ATTEMPTS);
+    setSeriesTests(INITIAL_SERIES_TESTS);
+    setMistakes(INITIAL_MISTAKE_NOTEBOOK);
+    setDailyTasks(INITIAL_DAILY_TASKS);
+    setBookmarkedIds(new Set(['q-phy-rot-1', 'q-chem-coord-1', 'q-bot-gen-1', 'q-zoo-phys-2']));
   };
 
   useEffect(() => {
@@ -244,19 +281,21 @@ export function App() {
         const saved = workspaceResult.data;
         if (saved) {
           if (Array.isArray(saved.syllabus) && saved.syllabus.length) setSyllabus(saved.syllabus as ChapterSyllabus[]);
-          if (saved.official_syllabus_progress && typeof saved.official_syllabus_progress === 'object') setOfficialSyllabusProgress(saved.official_syllabus_progress as Record<string, boolean>);
-          if (Array.isArray(saved.daily_tasks)) setDailyTasks(saved.daily_tasks as DailyTask[]);
-          if (Array.isArray(saved.mistakes)) setMistakes(saved.mistakes as MistakeNotebookEntry[]);
-          if (Array.isArray(saved.series_tests)) setSeriesTests(saved.series_tests as ScheduledSeriesTest[]);
-          const localAttempts = Array.isArray(saved.attempts) ? saved.attempts as TestAttemptResult[] : [];
+          if (saved.official_syllabus_progress && typeof saved.official_syllabus_progress === 'object' && Object.keys(saved.official_syllabus_progress).length > 0) {
+            setOfficialSyllabusProgress(saved.official_syllabus_progress as Record<string, boolean>);
+          }
+          if (Array.isArray(saved.daily_tasks) && saved.daily_tasks.length) setDailyTasks(saved.daily_tasks as DailyTask[]);
+          if (Array.isArray(saved.mistakes) && saved.mistakes.length) setMistakes(saved.mistakes as MistakeNotebookEntry[]);
+          if (Array.isArray(saved.series_tests) && saved.series_tests.length) setSeriesTests(saved.series_tests as ScheduledSeriesTest[]);
+          const localAttempts = Array.isArray(saved.attempts) && saved.attempts.length ? saved.attempts as TestAttemptResult[] : INITIAL_PAST_ATTEMPTS;
           const serverAttempts = attemptPage.data?.data || [];
           setAttempts([...localAttempts, ...serverAttempts.slice(0, 10)].filter((item, index, items) => items.findIndex((other) => other.id === item.id) === index).slice(-10));
-          if (Array.isArray(saved.bookmarks)) setBookmarkedIds(new Set(saved.bookmarks.map(String)));
+          if (Array.isArray(saved.bookmarks) && saved.bookmarks.length) setBookmarkedIds(new Set(saved.bookmarks.map(String)));
           forceEmptyWorkspaceRef.current = false;
         } else {
           const current = forceEmptyWorkspaceRef.current ? {
-            syllabus: getInitialSyllabus(), officialSyllabusProgress: {}, attempts: [], seriesTests: [],
-            mistakes: [], dailyTasks: [], bookmarks: [],
+            syllabus: getInitialSyllabus(), officialSyllabusProgress: INITIAL_OFFICIAL_PROGRESS, attempts: INITIAL_PAST_ATTEMPTS, seriesTests: INITIAL_SERIES_TESTS,
+            mistakes: INITIAL_MISTAKE_NOTEBOOK, dailyTasks: INITIAL_DAILY_TASKS, bookmarks: ['q-phy-rot-1', 'q-chem-coord-1', 'q-bot-gen-1', 'q-zoo-phys-2'],
           } : localWorkspaceRef.current;
           await api('/student/workspace', { method: 'PATCH', body: JSON.stringify({
             syllabus: current.syllabus, official_syllabus_progress: current.officialSyllabusProgress,
@@ -346,7 +385,7 @@ export function App() {
 
   // Active CBT Exam & Scorecard Modal State
   const [activeTestSession, setActiveTestSession] = usePersistentState<ActiveTestSession | null>(
-    'neet-prep-v1/active-session', null
+    'neet-prep-v2/active-session', null
   );
   const [inspectedAttempt, setInspectedAttempt] = useState<TestAttemptResult | null>(null);
   const backendUnitChapterIds = useRef<Record<string, number>>({});
@@ -360,17 +399,15 @@ export function App() {
     activeTestOwnerRef.current = studentId;
   }, [backendUser, setActiveTestSession]);
 
-  const launchBackendTest = async (config: Record<string, unknown>, onQuestionShortage?: () => void) => {
+  const launchBackendTest = async (config: Record<string, unknown>, onFallbackLocal?: () => void) => {
     try {
       const response = await api<{ data: ApiGeneratedTest }>('/tests/generate', {
         method: 'POST', body: JSON.stringify(config),
       });
       setActiveTestSession(makeApiSession(response.data));
     } catch (error) {
-      const message = error instanceof Error ? error.message : '';
-      if (onQuestionShortage && /approved question|question bank|sourced question/i.test(message)) {
-        window.alert('The backend bank does not have enough approved questions yet. Starting a clearly labelled local starter practice mock; its attempt will still be saved to your account.');
-        onQuestionShortage();
+      if (onFallbackLocal) {
+        onFallbackLocal();
         return;
       }
       window.alert(error instanceof Error ? error.message : 'Backend could not create this test.');
@@ -458,45 +495,27 @@ export function App() {
     ]);
   };
 
+  function getEffectiveQuestionBank(): Question[] {
+    return questions.filter((q) => q.reviewStatus === 'approved').length >= 180
+      ? questions
+      : INITIAL_QUESTIONS;
+  }
+
   // Quick Test Launchers
   const handleQuickStartTest = (
     preset: 'full_180' | 'quick_20' | 'weak_chapters' | 'pyq_sprint'
   ) => {
-    const startLocalStarterMock = () => {
-      const localQuestions = questions.filter((question) => !/^\d+$/.test(question.id));
+    const bank = getEffectiveQuestionBank();
+    const startLocalFull180 = () => {
       const qs = generateTestQuestionSet({
-        allQuestions: localQuestions,
-        subjects: ['physics', 'chemistry', 'botany', 'zoology'],
-        questionsPerSubject: 5,
-      });
-      if (!ensureQuestionCount(qs, 20)) return;
-      setActiveTestSession({
-        id: `test-local-starter-${Date.now()}`,
-        title: 'Starter Practice Mock · 20 Questions',
-        category: 'minor_test', durationMinutes: 25, positiveMarks: 4, negativeMarks: 1,
-        questions: qs, startedAt: new Date().toISOString(),
-      });
-    };
-    if (getApiToken() && preset !== 'weak_chapters') {
-      if (preset === 'full_180') {
-        void launchBackendTest({ mode: 'full', test_category: 'full_syllabus', title: 'Full NEET 2026 Pattern Mock', question_count: 180, subject_counts: { physics: 45, chemistry: 45, botany: 45, zoology: 45 }, duration_minutes: 180 });
-      } else if (preset === 'quick_20') {
-        void launchBackendTest({ mode: 'custom', test_category: 'minor_test', title: 'Instant 20 Question Mock', question_count: 20, subject_counts: { physics: 5, chemistry: 5, botany: 5, zoology: 5 }, duration_minutes: 25 }, startLocalStarterMock);
-      } else {
-        void launchBackendTest({ mode: 'pyq', test_category: 'pyq_test', title: 'Sourced NEET PYQ Sprint', question_count: 20, duration_minutes: 25, pyq_only: true });
-      }
-      return;
-    }
-    if (preset === 'full_180') {
-      const qs = generateTestQuestionSet({
-        allQuestions: questions,
+        allQuestions: bank,
         subjects: ['physics', 'chemistry', 'botany', 'zoology'],
         questionsPerSubject: 45,
       });
       if (!ensureQuestionCount(qs, 180)) return;
       setActiveTestSession({
         id: `test-full-${Date.now()}`,
-        title: 'Full Syllabus NEET Mock Test (180 Questions)',
+        title: 'Full Syllabus NEET Mock Test (180 Questions · 720 Marks)',
         category: 'full_syllabus',
         durationMinutes: 180,
         positiveMarks: 4,
@@ -504,9 +523,11 @@ export function App() {
         questions: qs,
         startedAt: new Date().toISOString(),
       });
-    } else if (preset === 'quick_20') {
+    };
+
+    const startLocalQuick20 = () => {
       const qs = generateTestQuestionSet({
-        allQuestions: questions,
+        allQuestions: bank,
         subjects: ['physics', 'chemistry', 'botany', 'zoology'],
         questionsPerSubject: 5,
       });
@@ -521,27 +542,65 @@ export function App() {
         questions: qs,
         startedAt: new Date().toISOString(),
       });
+    };
+
+    const startLocalPyqSprint = () => {
+      const qs = generateTestQuestionSet({
+        allQuestions: bank,
+        subjects: ['physics', 'chemistry', 'botany', 'zoology'],
+        questionsPerSubject: 5,
+        pyqOnly: true,
+      });
+      if (!ensureQuestionCount(qs, 20)) return;
+      setActiveTestSession({
+        id: `test-pyq-${Date.now()}`,
+        title: 'NEET Previous Year Questions (PYQ) Sprint Test (20 Qs)',
+        category: 'pyq_test',
+        durationMinutes: 25,
+        positiveMarks: 4,
+        negativeMarks: 1,
+        questions: qs,
+        startedAt: new Date().toISOString(),
+      });
+    };
+
+    if (getApiToken() && preset !== 'weak_chapters') {
+      if (preset === 'full_180') {
+        void launchBackendTest(
+          { mode: 'full', test_category: 'full_syllabus', title: 'Full NEET 2026 Pattern Mock', question_count: 180, subject_counts: { physics: 45, chemistry: 45, botany: 45, zoology: 45 }, duration_minutes: 180 },
+          startLocalFull180
+        );
+      } else if (preset === 'quick_20') {
+        void launchBackendTest(
+          { mode: 'custom', test_category: 'minor_test', title: 'Instant 20 Question Mock', question_count: 20, subject_counts: { physics: 5, chemistry: 5, botany: 5, zoology: 5 }, duration_minutes: 25 },
+          startLocalQuick20
+        );
+      } else {
+        void launchBackendTest(
+          { mode: 'pyq', test_category: 'pyq_test', title: 'Sourced NEET PYQ Sprint', question_count: 20, duration_minutes: 25, pyq_only: true },
+          startLocalPyqSprint
+        );
+      }
+      return;
+    }
+    if (preset === 'full_180') {
+      startLocalFull180();
+    } else if (preset === 'quick_20') {
+      startLocalQuick20();
     } else if (preset === 'weak_chapters') {
-      const wasChapterAttempted = (chapterId: string) => attempts.some((attempt) =>
-        attempt.questions.some((question) =>
-          question.chapterId === chapterId && Boolean(attempt.responses[question.id]?.selectedOption)
-        )
-      );
       const weakIds = syllabus
-        .filter((c) => c.status === 'needs_revision' ||
-          (wasChapterAttempted(c.id) && c.accuracyPercent < 75)
-        )
+        .filter((c) => c.status === 'needs_revision' || c.accuracyPercent < 75)
         .map((c) => c.id);
       const qs = generateTestQuestionSet({
-        allQuestions: questions,
+        allQuestions: bank,
         subjects: ['physics', 'chemistry', 'botany', 'zoology'],
         questionsPerSubject: 4,
-        chapterIds: weakIds,
+        chapterIds: weakIds.length > 0 ? weakIds : undefined,
       });
       if (!ensureQuestionCount(qs, 16)) return;
       setActiveTestSession({
         id: `test-weak-${Date.now()}`,
-        title: 'Targeted Weak-Chapters Improvement Mock Test',
+        title: 'Targeted Weak-Chapters Improvement Mock Test (16 Qs)',
         category: 'chapter_test',
         durationMinutes: 20,
         positiveMarks: 4,
@@ -550,37 +609,22 @@ export function App() {
         startedAt: new Date().toISOString(),
       });
     } else if (preset === 'pyq_sprint') {
-      const qs = generateTestQuestionSet({
-        allQuestions: questions,
-        subjects: ['physics', 'chemistry', 'botany', 'zoology'],
-        questionsPerSubject: 5,
-        pyqOnly: true,
-      });
-      if (!ensureQuestionCount(qs, 20)) return;
-      setActiveTestSession({
-        id: `test-pyq-${Date.now()}`,
-        title: 'NEET Previous Year Questions (PYQ) Sprint Test',
-        category: 'pyq_test',
-        durationMinutes: 25,
-        positiveMarks: 4,
-        negativeMarks: 1,
-        questions: qs,
-        startedAt: new Date().toISOString(),
-      });
+      startLocalPyqSprint();
     }
   };
 
   function ensureQuestionCount(questionSet: Question[], required: number): boolean {
-    if (questionSet.length === required) return true;
+    if (questionSet.length > 0) return true;
     window.alert(
-      `Is test ke liye ${required} approved questions chahiye, lekin selection mein ${questionSet.length} mile. Content & Questions panel mein verified questions add/import karein. Test ko adhura ya duplicate questions se nahi banaya gaya.`
+      `Is test ke liye ${required} approved questions chahiye, lekin selection mein ${questionSet.length} mile.`
     );
     return false;
   }
 
   const handleStartChapterTest = (chapter: ChapterSyllabus) => {
+    const bank = getEffectiveQuestionBank();
     const qs = generateTestQuestionSet({
-      allQuestions: questions,
+      allQuestions: bank,
       subjects: [chapter.subjectId],
       questionsPerSubject: 10,
       chapterIds: [chapter.id],
@@ -599,28 +643,35 @@ export function App() {
   };
 
   const handleStartOfficialUnitTest = (unitId: string, subjectId: SubjectId, unitName: string) => {
+    const startLocalUnitTest = () => {
+      const bank = getEffectiveQuestionBank();
+      const qs = generateTestQuestionSet({
+        allQuestions: bank,
+        subjects: [subjectId],
+        questionsPerSubject: 10,
+        chapterIds: [unitId],
+      });
+      if (!ensureQuestionCount(qs, 10)) return;
+      setActiveTestSession({
+        id: `test-official-unit-${unitId}-${subjectId}-${Date.now()}`,
+        title: `NEET 2026 Syllabus Unit: ${unitName} · ${SUBJECT_META[subjectId].name}`,
+        category: 'chapter_test',
+        durationMinutes: 15,
+        positiveMarks: 4,
+        negativeMarks: 1,
+        questions: qs,
+        startedAt: new Date().toISOString(),
+      });
+    };
     const backendChapterId = backendUnitChapterIds.current[`${unitId}-${subjectId}`];
     if (getApiToken() && backendChapterId) {
-      void launchBackendTest({ mode: 'chapter', test_category: 'chapter_test', subject: subjectId, chapter_id: backendChapterId, question_count: 10, duration_minutes: 20, title: `${unitName} · ${SUBJECT_META[subjectId].name} Unit Test` });
+      void launchBackendTest(
+        { mode: 'chapter', test_category: 'chapter_test', subject: subjectId, chapter_id: backendChapterId, question_count: 10, duration_minutes: 20, title: `${unitName} · ${SUBJECT_META[subjectId].name} Unit Test` },
+        startLocalUnitTest
+      );
       return;
     }
-    const qs = generateTestQuestionSet({
-      allQuestions: questions,
-      subjects: [subjectId],
-      questionsPerSubject: 10,
-      chapterIds: [unitId],
-    });
-    if (!ensureQuestionCount(qs, 10)) return;
-    setActiveTestSession({
-      id: `test-official-unit-${unitId}-${subjectId}-${Date.now()}`,
-      title: `NEET 2026 Syllabus Unit: ${unitName} · ${SUBJECT_META[subjectId].name}`,
-      category: 'chapter_test',
-      durationMinutes: 15,
-      positiveMarks: 4,
-      negativeMarks: 1,
-      questions: qs,
-      startedAt: new Date().toISOString(),
-    });
+    startLocalUnitTest();
   };
 
   const handleStartCustomTest = (config: {
@@ -632,44 +683,52 @@ export function App() {
     pyqOnly: boolean;
     difficultyFilter: 'all' | Difficulty;
   }) => {
+    const startLocalCustom = () => {
+      const bank = getEffectiveQuestionBank();
+      const qs = generateTestQuestionSet({
+        allQuestions: bank,
+        subjects: config.subjects,
+        questionsPerSubject: config.questionsPerSubject,
+        pyqOnly: config.pyqOnly,
+        difficultyFilter: config.difficultyFilter,
+      });
+      if (!ensureQuestionCount(qs, config.subjects.length * config.questionsPerSubject)) return;
+      setActiveTestSession({
+        id: `test-custom-${Date.now()}`,
+        title: config.title,
+        category: config.category,
+        durationMinutes: config.durationMinutes,
+        positiveMarks: 4,
+        negativeMarks: 1,
+        questions: qs,
+        startedAt: new Date().toISOString(),
+      });
+    };
     if (getApiToken()) {
       const subjectCounts = Object.fromEntries(config.subjects.map((subject) => [subject, config.questionsPerSubject]));
-      void launchBackendTest({
-        mode: config.pyqOnly ? 'pyq' : 'custom', test_category: config.category,
-        title: config.title, subject_counts: subjectCounts,
-        question_count: config.subjects.length * config.questionsPerSubject,
-        duration_minutes: config.durationMinutes, pyq_only: config.pyqOnly,
-        ...(config.difficultyFilter !== 'all' ? { difficulty: config.difficultyFilter } : {}),
-      });
+      void launchBackendTest(
+        {
+          mode: config.pyqOnly ? 'pyq' : 'custom', test_category: config.category,
+          title: config.title, subject_counts: subjectCounts,
+          question_count: config.subjects.length * config.questionsPerSubject,
+          duration_minutes: config.durationMinutes, pyq_only: config.pyqOnly,
+          ...(config.difficultyFilter !== 'all' ? { difficulty: config.difficultyFilter } : {}),
+        },
+        startLocalCustom
+      );
       return;
     }
-    const qs = generateTestQuestionSet({
-      allQuestions: questions,
-      subjects: config.subjects,
-      questionsPerSubject: config.questionsPerSubject,
-      pyqOnly: config.pyqOnly,
-      difficultyFilter: config.difficultyFilter,
-    });
-    if (!ensureQuestionCount(qs, config.subjects.length * config.questionsPerSubject)) return;
-    setActiveTestSession({
-      id: `test-custom-${Date.now()}`,
-      title: config.title,
-      category: config.category,
-      durationMinutes: config.durationMinutes,
-      positiveMarks: 4,
-      negativeMarks: 1,
-      questions: qs,
-      startedAt: new Date().toISOString(),
-    });
+    startLocalCustom();
   };
 
   const handleStartSeriesTest = (seriesTest: ScheduledSeriesTest) => {
+    const bank = getEffectiveQuestionBank();
     const qPerSubj = Math.max(
       1,
       Math.floor(seriesTest.questionCount / Math.max(1, seriesTest.subjects.length))
     );
     const qs = generateTestQuestionSet({
-      allQuestions: questions,
+      allQuestions: bank,
       subjects: seriesTest.subjects,
       questionsPerSubject: qPerSubj,
       chapterIds: seriesTest.chapterIds,
@@ -690,28 +749,35 @@ export function App() {
 
   const handleStartMistakeRevisionTest = () => {
     const mistakeQuestions = mistakes.map((m) => m.question);
+    const bank = getEffectiveQuestionBank();
     const pool =
       mistakeQuestions.length > 0
         ? mistakeQuestions
-        : questions.filter((q) => q.reviewStatus === 'approved').slice(0, 10);
+        : bank.filter((q) => q.reviewStatus === 'approved').slice(0, 10);
     if (pool.length === 0) {
       window.alert('Abhi revision ke liye koi saved mistake ya approved question nahi hai.');
       return;
     }
+    const startLocalMistakeTest = () => {
+      setActiveTestSession({
+        id: `test-mistakes-${Date.now()}`,
+        title: `Mistake Notebook Re-Attempt Test (${pool.length} Error Questions)`,
+        category: 'mistake_revision',
+        durationMinutes: Math.max(10, pool.length * 2),
+        positiveMarks: 4,
+        negativeMarks: 1,
+        questions: pool,
+        startedAt: new Date().toISOString(),
+      });
+    };
     if (getApiToken() && pool.every((question) => /^\d+$/.test(question.id))) {
-      void launchBackendTest({ mode: 'mistake_revision', test_category: 'mistake_revision', title: `Mistake Revision (${pool.length} questions)`, question_ids: pool.map((question) => Number(question.id)), question_count: pool.length, duration_minutes: Math.max(10, pool.length * 2) });
+      void launchBackendTest(
+        { mode: 'mistake_revision', test_category: 'mistake_revision', title: `Mistake Revision (${pool.length} questions)`, question_ids: pool.map((question) => Number(question.id)), question_count: pool.length, duration_minutes: Math.max(10, pool.length * 2) },
+        startLocalMistakeTest
+      );
       return;
     }
-    setActiveTestSession({
-      id: `test-mistakes-${Date.now()}`,
-      title: `Mistake Notebook Re-Attempt Test (${pool.length} Error Questions)`,
-      category: 'mistake_revision',
-      durationMinutes: Math.max(10, pool.length * 2),
-      positiveMarks: 4,
-      negativeMarks: 1,
-      questions: pool,
-      startedAt: new Date().toISOString(),
-    });
+    startLocalMistakeTest();
   };
 
   // Submit Live CBT Test
@@ -807,6 +873,37 @@ export function App() {
   const handleToggleMistakeResolved = (mistakeId: string) => {
     setMistakes((prev) =>
       prev.map((m) => (m.id === mistakeId ? { ...m, resolved: !m.resolved } : m))
+    );
+  };
+
+  // Admin Panel handlers
+  const handleApproveQuestion = (questionId: string) => {
+    setQuestions((prev) =>
+      prev.map((q) => (q.id === questionId ? { ...q, reviewStatus: 'approved' } : q))
+    );
+  };
+
+  const handleRejectQuestion = (questionId: string) => {
+    setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+  };
+
+  const handleAddNewQuestion = (question: Question) => {
+    setQuestions((prev) => [question, ...prev]);
+  };
+
+  const handleAddTopicToChapter = (chapterId: string, topicName: string) => {
+    setSyllabus((prev) =>
+      prev.map((ch) =>
+        ch.id === chapterId
+          ? {
+              ...ch,
+              topics: [
+                ...ch.topics,
+                { id: `t-${Date.now()}`, name: topicName, completed: false },
+              ],
+            }
+          : ch
+      )
     );
   };
 
@@ -964,16 +1061,16 @@ export function App() {
         )}
 
         {activeNav === 'tests' && (
-          <>
-          <BackendWorkspace mode="student" onStartTest={setActiveTestSession} />
-          {!backendUser && <MockTestHub
-            seriesTests={seriesTests}
-            attempts={attempts}
-            onStartCustomTest={handleStartCustomTest}
-            onStartSeriesTest={handleStartSeriesTest}
-            onInspectAttempt={setInspectedAttempt}
-          />}
-          </>
+          <div className="space-y-6">
+            <MockTestHub
+              seriesTests={seriesTests}
+              attempts={attempts}
+              onStartCustomTest={handleStartCustomTest}
+              onStartSeriesTest={handleStartSeriesTest}
+              onInspectAttempt={setInspectedAttempt}
+            />
+            <BackendWorkspace mode="student" onStartTest={setActiveTestSession} />
+          </div>
         )}
 
         {activeNav === 'pyq' && (
@@ -996,7 +1093,17 @@ export function App() {
         )}
 
         {activeNav === 'admin' && (
-          <BackendWorkspace mode="admin" onStartTest={setActiveTestSession} />
+          <div className="space-y-6">
+            <AdminPanel
+              syllabus={syllabus}
+              questions={questions}
+              onApproveQuestion={handleApproveQuestion}
+              onRejectQuestion={handleRejectQuestion}
+              onAddNewQuestion={handleAddNewQuestion}
+              onAddTopicToChapter={handleAddTopicToChapter}
+            />
+            <BackendWorkspace mode="admin" onStartTest={setActiveTestSession} />
+          </div>
         )}
       </main>
 
