@@ -1,4 +1,5 @@
 import neet2020PyqRaw from './neet_2020_e1_pyq.json';
+import neet2015To2025PyqRaw from './neet_2015_2025_pyq.json';
 import neet2021PracticeRaw from './neet_2021_pattern_practice.json';
 import { OFFICIAL_NEET_2026_SYLLABUS } from './officialNeet2026Syllabus';
 import type {
@@ -871,10 +872,50 @@ const BUNDLED_2021_PRACTICE: Question[] = (neet2021PracticeRaw as Array<{
   reviewStatus: 'approved',
 }));
 
-// Combined 234-question master bank (232 Approved + 2 Pending Review)
+// Convert all 98 multi-year NEET PYQs (2015–2025 across all 60 chapters) into Question objects
+const BUNDLED_2015_2025_PYQS: Question[] = (neet2015To2025PyqRaw as Array<{
+  id: string;
+  pyq_year: number;
+  question_number: string | number;
+  pdf_page: string | number;
+  subject_id: SubjectId;
+  chapter_id: string;
+  topic_name: string;
+  difficulty: Difficulty;
+  stem: string;
+  options: QuestionOption[];
+  correct_option: 'A' | 'B' | 'C' | 'D';
+  explanation: string;
+  ncert_reference?: string;
+  source_label: string;
+  source_url: string;
+}>).map((row) => ({
+  id: row.id,
+  subjectId: row.subject_id,
+  chapterId: row.chapter_id,
+  chapterName: OFFICIAL_UNIT_TITLES[row.chapter_id] || row.topic_name,
+  topicName: row.topic_name,
+  difficulty: row.difficulty,
+  questionType: 'single_correct',
+  stem: row.stem,
+  options: row.options,
+  correctOption: row.correct_option,
+  explanation: row.explanation,
+  ncertReference: row.ncert_reference || `NCERT ${row.subject_id.toUpperCase()} · ${row.topic_name}`,
+  isPyq: true,
+  pyqYear: row.pyq_year,
+  sourceLabel: row.source_label,
+  sourceUrl: row.source_url,
+  sourcePage: `PDF page ${row.pdf_page}`,
+  sourceQuestionNumber: String(row.question_number),
+  reviewStatus: 'approved',
+}));
+
+// Combined 332-question master bank (330 Approved including 300 PYQs across 2015–2025 + 2 Pending Review)
 export const INITIAL_QUESTIONS: Question[] = [
   ...CORE_CURATED_QUESTIONS,
   ...BUNDLED_2020_PYQS,
+  ...BUNDLED_2015_2025_PYQS,
   ...BUNDLED_2021_PRACTICE,
 ];
 

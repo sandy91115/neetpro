@@ -191,10 +191,10 @@ export const PyqAndPracticeBank: React.FC<PyqAndPracticeBankProps> = ({
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-xl font-extrabold text-slate-900">
-            NEET PYQ & Practice Question Bank
+            NEET PYQ & Practice Question Bank (2015–2025)
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Complete Physics, Chemistry, Botany & Zoology PYQs (2020–2024) + NCERT Pattern Practice MCQs with step-by-step solutions.
+            Year-Wise & Chapter-Wise Physics, Chemistry, Botany & Zoology PYQs (2015–2025) + NCERT Pattern Practice MCQs with step-by-step solutions.
           </p>
         </div>
 
@@ -203,12 +203,48 @@ export const PyqAndPracticeBank: React.FC<PyqAndPracticeBankProps> = ({
             Approved Questions: {approvedQuestions.length}
           </span>
           <span className="px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200">
-            Official PYQs: {sourceCompletePyqCount}
+            Official PYQs (2015–2025): {sourceCompletePyqCount}
           </span>
           <span className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200">
             Bookmarked: {bookmarkedIds.size}
           </span>
         </div>
+      </div>
+
+      {/* Year-Wise Quick Filter Bar (2015–2025) */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs flex items-center gap-2 overflow-x-auto">
+        <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider shrink-0 px-1">
+          PYQ Year:
+        </span>
+        <button
+          onClick={() => setYearFilter('all')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition cursor-pointer ${
+            yearFilter === 'all'
+              ? 'bg-indigo-600 text-white'
+              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+          }`}
+        >
+          All Years ({sourceCompletePyqCount})
+        </button>
+        {availableYears.map((yr) => {
+          const countForYear = approvedQuestions.filter((q) => q.pyqYear === yr).length;
+          return (
+            <button
+              key={yr}
+              onClick={() => {
+                setYearFilter(String(yr));
+                setSourceFilter('pyq');
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition cursor-pointer ${
+                yearFilter === String(yr)
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              NEET {yr} ({countForYear})
+            </button>
+          );
+        })}
       </div>
 
       {/* Filters */}
