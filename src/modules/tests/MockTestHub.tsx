@@ -71,6 +71,13 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
   const [chapterSearch, setChapterSearch] = useState('');
   const [chapterQuestionCount, setChapterQuestionCount] = useState<number>(10);
   const [topicQuestionCount, setTopicQuestionCount] = useState<number>(5);
+  const [expandedChapterIds, setExpandedChapterIds] = useState<Record<string, boolean>>(() => ({
+    [syllabus[0]?.id || 'phy-units-measurements']: true,
+  }));
+
+  const toggleExpandChapter = (chId: string) => {
+    setExpandedChapterIds((prev) => ({ ...prev, [chId]: !prev[chId] }));
+  };
 
   // Custom Generator State
   const [presetMode, setPresetMode] = useState<
@@ -317,100 +324,104 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
             </div>
           </div>
 
-          {/* Chapter Cards with Per-Chapter AND Per-Topic 1-Tap Test Buttons */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Minimal ALLEN-Style Chapter Accordion Cards with Expandable Topic Micro-Tests */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {filteredChapters.map((ch) => {
               const meta = SUBJECT_META[ch.subjectId];
+              const isExpanded = Boolean(expandedChapterIds[ch.id] || chapterSearch.trim());
               return (
                 <div
                   key={ch.id}
-                  className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs hover:border-blue-300 transition flex flex-col justify-between gap-4"
+                  className="bg-white rounded-2xl border border-slate-200/90 p-3.5 sm:p-4 shadow-2xs hover:border-blue-300 transition flex flex-col justify-between gap-3"
                 >
-                  <div className="space-y-3">
-                    {/* Chapter Header */}
-                    <div className="flex items-start justify-between gap-2 flex-wrap">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span
-                            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${meta.bgLight} ${meta.textDark} ${meta.border}`}
-                          >
-                            {meta.name} · Class {ch.classLevel}
+                  {/* Clean Single-Row Chapter Card Header */}
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div
+                      onClick={() => toggleExpandChapter(ch.id)}
+                      className="min-w-0 flex-1 cursor-pointer"
+                    >
+                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${meta.bgLight} ${meta.textDark} ${meta.border}`}
+                        >
+                          {meta.shortName} · {ch.classLevel}
+                        </span>
+                        <span className="text-[10px] font-semibold text-slate-400">
+                          Acc: {ch.accuracyPercent}%
+                        </span>
+                        {ch.highYield && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                            <Flame className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                            High Yield
                           </span>
-                          <span className="text-[11px] font-medium text-slate-500">{ch.unitName}</span>
-                          {ch.highYield && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                              <Flame className="w-3 h-3 fill-amber-500 text-amber-500" />
-                              High Yield (~{ch.expectedQuestions} Qs)
-                            </span>
-                          )}
-                        </div>
-                        <h3 className="text-base font-extrabold text-slate-900">{ch.name}</h3>
+                        )}
                       </div>
-
+                      <h3 className="text-sm sm:text-base font-extrabold text-slate-900 leading-snug">
+                        {ch.name}
+                      </h3>
                       <button
-                        onClick={() => onStartChapterTest(ch, chapterQuestionCount)}
-                        className="min-h-10 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer shrink-0"
+                        type="button"
+                        className="mt-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 cursor-pointer"
                       >
-                        <Play className="w-3.5 h-3.5 fill-white" />
-                        Chapter Test ({chapterQuestionCount} Qs)
+                        <span>
+                          {isExpanded
+                            ? `▾ Hide ${ch.topics.length} Topic Tests`
+                            : `▸ View ${ch.topics.length} Topic-Wise Tests`}
+                        </span>
                       </button>
                     </div>
 
-                    {/* Topic-Wise Test List inside every Chapter */}
-                    <div className="bg-slate-50 rounded-xl border border-slate-200/80 p-3 space-y-2">
-                      <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                        <span>Topic-Wise Micro Tests ({ch.topics.length} Topics)</span>
-                        <span>{topicQuestionCount} Qs · +{topicQuestionCount * 4} Marks</span>
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      <button
+                        onClick={() => onStartChapterTest(ch, chapterQuestionCount)}
+                        className="min-h-9 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                      >
+                        <Play className="w-3 h-3 fill-white" />
+                        <span>{chapterQuestionCount}Q Test</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onStartChapterTest(ch, 20)}
+                        className="text-[10px] font-bold text-slate-500 hover:text-slate-900 cursor-pointer"
+                      >
+                        Full 20Q →
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Collapsible Topic-Wise Micro-Tests (Minimal until tapped) */}
+                  {isExpanded && (
+                    <div className="bg-slate-50 rounded-xl border border-slate-200/80 p-2.5 space-y-1.5">
+                      <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
+                        <span>Topic-Wise Micro Tests</span>
+                        <span>{topicQuestionCount} Qs / Topic</span>
                       </div>
 
-                      <div className="divide-y divide-slate-200/70">
+                      <div className="divide-y divide-slate-200/60">
                         {ch.topics.map((topic) => (
                           <div
                             key={topic.id}
-                            className="py-2 first:pt-1 last:pb-0.5 flex items-center justify-between gap-2"
+                            className="py-1.5 first:pt-1 last:pb-0.5 flex items-center justify-between gap-2"
                           >
-                            <div className="min-w-0 flex items-center gap-2">
-                              <Target className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                              <span className="text-xs font-semibold text-slate-800 leading-snug">
+                            <div className="min-w-0 flex items-center gap-1.5">
+                              <Target className="w-3 h-3 text-indigo-600 shrink-0" />
+                              <span className="text-xs font-medium text-slate-800 leading-snug">
                                 {topic.name}
                               </span>
                             </div>
                             <button
                               type="button"
                               onClick={() => onStartTopicTest(ch, topic.name, topicQuestionCount)}
-                              className="min-h-9 shrink-0 px-2.5 py-1.5 rounded-lg bg-white hover:bg-indigo-600 text-indigo-700 hover:text-white border border-indigo-200 hover:border-indigo-600 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer shadow-2xs"
+                              className="min-h-8 shrink-0 px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-600 text-indigo-700 hover:text-white border border-indigo-200 hover:border-indigo-600 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
                             >
-                              <Play className="w-3 h-3 fill-current" />
-                              Topic Test ({topicQuestionCount}Q)
+                              <Play className="w-2.5 h-2.5 fill-current" />
+                              <span>{topicQuestionCount}Q</span>
                             </button>
                           </div>
                         ))}
                       </div>
                     </div>
-                  </div>
-
-                  {/* Quick Chapter Footer Actions */}
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
-                    <span className="text-[11px] font-semibold text-slate-500">
-                      Mastery Accuracy: <strong className="text-slate-800">{ch.accuracyPercent}%</strong>
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => onStartChapterTest(ch, 10)}
-                        className="min-h-9 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs cursor-pointer"
-                      >
-                        Quick 10-Q
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onStartChapterTest(ch, 20)}
-                        className="min-h-9 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1 cursor-pointer"
-                      >
-                        <Zap className="w-3 h-3" /> Full 20-Q Chapter Mock
-                      </button>
-                    </div>
-                  </div>
+                  )}
                 </div>
               );
             })}

@@ -45,6 +45,13 @@ export const SyllabusTracker: React.FC<SyllabusTrackerProps> = ({
   const [selectedClass, setSelectedClass] = useState<'all' | '11th' | '12th'>('all');
   const [selectedStatus, setSelectedStatus] = useState<'all' | CompletionStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [expandedChapterIds, setExpandedChapterIds] = useState<Record<string, boolean>>(() => ({
+    [syllabus[0]?.id || 'phy-units-measurements']: true,
+  }));
+
+  const toggleExpandChapter = (chId: string) => {
+    setExpandedChapterIds((prev) => ({ ...prev, [chId]: !prev[chId] }));
+  };
 
   const filteredChapters = syllabus.filter((ch) => {
     if (selectedSubject !== 'all' && ch.subjectId !== selectedSubject) return false;
@@ -82,31 +89,18 @@ export const SyllabusTracker: React.FC<SyllabusTrackerProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Info Banner */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      {/* Top Info Banner — Minimal ALLEN Digital Style */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-2xs flex flex-col md:flex-row md:items-center md:justify-between gap-3.5">
         <div>
-          <div className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full mb-2">
-            <Sparkles className="w-3.5 h-3.5" />
-            Syllabus Tracker | Official syllabus + chapter progress
+          <div className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full mb-1.5">
+            <Sparkles className="w-3 h-3" />
+            ALLEN Digital Syllabus & NCERT Revision Tracker
           </div>
-          <h1 className="text-xl font-extrabold text-slate-900">
-            NEET Syllabus & NCERT Revision Tracker
+          <h1 className="text-lg sm:text-xl font-extrabold text-slate-900">
+            NEET Syllabus, NCERT Reads & Chapter/Topic Tests
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Track chapter completion, NCERT reading count, formula revision, PYQ status, and launch
-            1-click chapter tests.
-          </p>
-          <p className="text-xs text-amber-800 mt-2">
-            This is a starter outline, not a verified complete 2027 syllabus.{' '}
-            <a
-              href="https://nta.ac.in/Download/Notice/Notice_20260108180635.pdf"
-              target="_blank"
-              rel="noreferrer"
-              className="font-bold underline"
-            >
-              Open the official NEET UG 2026 syllabus
-            </a>{' '}
-            and compare it with the 2027 bulletin when published.
+            Track NCERT readings, formula revision & PYQ status, or tap any chapter/topic to launch a test.
           </p>
         </div>
 
@@ -296,50 +290,64 @@ export const SyllabusTracker: React.FC<SyllabusTrackerProps> = ({
                   </select>
                 </div>
 
-                {/* Chapter Title */}
-                <h3 className="text-base font-bold text-slate-900 mb-3">{ch.name}</h3>
-
-                {/* Subtopics Checklist with 1-Tap Topic Test Buttons */}
-                <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-100 mb-3">
-                  <div className="flex items-center justify-between text-[11px] font-bold uppercase text-slate-400 mb-1">
-                    <span>Topics & Topic-Wise Tests ({ch.topics.length}):</span>
-                    <span>Tap Test for 5-Q Quiz</span>
-                  </div>
-                  {ch.topics.map((topic) => (
-                    <div
-                      key={topic.id}
-                      className="flex items-center justify-between gap-2 py-1 border-b last:border-b-0 border-slate-200/60"
-                    >
-                      <div
-                        onClick={() => onToggleTopicCompleted(ch.id, topic.id)}
-                        className="flex items-center gap-2 text-xs cursor-pointer hover:text-blue-600 transition min-w-0 flex-1"
-                      >
-                        {topic.completed ? (
-                          <CheckSquare className="w-4 h-4 text-emerald-600 shrink-0" />
-                        ) : (
-                          <Square className="w-4 h-4 text-slate-400 shrink-0" />
-                        )}
-                        <span
-                          className={
-                            topic.completed
-                              ? 'text-slate-600 line-through'
-                              : 'text-slate-800 font-medium'
-                          }
-                        >
-                          {topic.name}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => onStartTopicTest(ch, topic.name, 5)}
-                        className="min-h-8 shrink-0 px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-600 text-indigo-700 hover:text-white border border-indigo-200 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
-                      >
-                        <Play className="w-2.5 h-2.5 fill-current" />
-                        Topic Test
-                      </button>
-                    </div>
-                  ))}
+                {/* Chapter Title & Collapsible Topics Toggle */}
+                <div className="flex items-center justify-between gap-2 mb-2.5">
+                  <h3
+                    onClick={() => toggleExpandChapter(ch.id)}
+                    className="text-sm sm:text-base font-extrabold text-slate-900 cursor-pointer"
+                  >
+                    {ch.name}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => toggleExpandChapter(ch.id)}
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 shrink-0 cursor-pointer"
+                  >
+                    {expandedChapterIds[ch.id] || searchQuery.trim()
+                      ? `▾ Hide Topics (${ch.topics.length})`
+                      : `▸ Topics & Tests (${ch.topics.length})`}
+                  </button>
                 </div>
+
+                {/* Subtopics Checklist with 1-Tap Topic Test Buttons (Collapsible on Mobile) */}
+                {(expandedChapterIds[ch.id] || searchQuery.trim()) && (
+                  <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-100 mb-3">
+                    {ch.topics.map((topic) => (
+                      <div
+                        key={topic.id}
+                        className="flex items-center justify-between gap-2 py-1 border-b last:border-b-0 border-slate-200/60"
+                      >
+                        <div
+                          onClick={() => onToggleTopicCompleted(ch.id, topic.id)}
+                          className="flex items-center gap-2 text-xs cursor-pointer hover:text-blue-600 transition min-w-0 flex-1"
+                        >
+                          {topic.completed ? (
+                            <CheckSquare className="w-4 h-4 text-emerald-600 shrink-0" />
+                          ) : (
+                            <Square className="w-4 h-4 text-slate-400 shrink-0" />
+                          )}
+                          <span
+                            className={
+                              topic.completed
+                                ? 'text-slate-500 line-through'
+                                : 'text-slate-800 font-medium'
+                            }
+                          >
+                            {topic.name}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onStartTopicTest(ch, topic.name, 5)}
+                          className="min-h-8 shrink-0 px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-600 text-indigo-700 hover:text-white border border-indigo-200 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
+                        >
+                          <Play className="w-2.5 h-2.5 fill-current" />
+                          5Q Test
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Bottom Revision Trackers & Quick Test Button */}

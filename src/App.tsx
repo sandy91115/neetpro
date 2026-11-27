@@ -984,29 +984,32 @@ export function App() {
 
   return (
     <div className="neet-app-shell min-h-screen flex flex-col bg-slate-50 text-slate-900">
-      {/* Top Global Navigation Bar */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-xs border-b border-slate-200 px-4 lg:px-8 py-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-sm font-black text-lg">
-            <GraduationCap className="w-6 h-6" />
+      {/* Top Global Navigation Bar — Minimal ALLEN Digital Style on Mobile */}
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-3 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-3">
+        <div
+          onClick={() => setActiveNav('dashboard')}
+          className="flex items-center gap-2.5 cursor-pointer min-w-0"
+        >
+          <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-2xs font-black text-base shrink-0">
+            <GraduationCap className="w-5 h-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-base tracking-tight text-slate-900">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="font-extrabold text-sm sm:text-base tracking-tight text-slate-900 truncate">
                 NEET PREP PRO
               </span>
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                TARGET 2027 · DROPPER
+              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                LEADER 27
               </span>
             </div>
-            <p className="text-[11px] text-slate-500 hidden sm:block">
-              Personal NEET preparation workspace | tests | practice | revision
+            <p className="text-[11px] text-slate-500 hidden sm:block truncate">
+              ALLEN Digital Pattern · Tests, Chapter/Topic Practice & Improvement Book
             </p>
           </div>
         </div>
 
-        {/* Center Navigation Pills */}
-        <nav className="hidden 2xl:flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl border border-slate-200/70">
+        {/* Center Navigation Pills (Desktop) */}
+        <nav className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/70 overflow-x-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeNav === item.id;
@@ -1014,13 +1017,13 @@ export function App() {
               <button
                 key={item.id}
                 onClick={() => setActiveNav(item.id)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shrink-0 ${
                   isActive
-                    ? 'bg-slate-900 text-white shadow-xs'
+                    ? 'bg-slate-900 text-white shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                 }`}
               >
-                <Icon className="w-4 h-4" />
+                <Icon className="w-3.5 h-3.5" />
                 <span>{item.label}</span>
                 {item.badge !== undefined && item.badge > 0 && (
                   <span
@@ -1036,54 +1039,42 @@ export function App() {
           })}
         </nav>
 
-        {/* Right Quick Launch CTA */}
-        <div className="flex items-center gap-2.5">
+        {/* Right Quick Launch CTA + Mobile Secondary Switcher */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             onClick={downloadBackup}
-            className="hidden md:inline-flex px-3 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs"
+            className="hidden lg:inline-flex px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs cursor-pointer"
           >
             Backup
           </button>
-          <label className="hidden md:inline-flex px-3 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs cursor-pointer">
+          <label className="hidden lg:inline-flex px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs cursor-pointer">
             Restore
             <input ref={backupFileInput} type="file" accept="application/json,.json" className="hidden" onChange={(event) => void restoreBackup(event.target.files?.[0])} />
           </label>
-          <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            <span>{backendUser ? (backendStateReady ? 'Progress saved to your account' : 'Syncing account progress…') : 'Progress saved in this browser'}</span>
+          <div className="hidden xl:flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>{backendUser ? 'Cloud Synced' : 'Saved Locally'}</span>
           </div>
 
           <button
-            onClick={() => handleQuickStartTest('quick_20')}
-            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+            onClick={() =>
+              setActiveNav(activeNav === 'admin' ? 'resources' : 'admin')
+            }
+            className="md:hidden min-h-9 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
           >
-            <Play className="w-3.5 h-3.5 fill-white" />
-            Start Instant Mock
+            <Database className="w-3.5 h-3.5 text-slate-500" />
+            <span>{activeNav === 'admin' ? 'Resources' : 'Studio'}</span>
+          </button>
+
+          <button
+            onClick={() => handleQuickStartTest('quick_20')}
+            className="min-h-9 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+          >
+            <Play className="w-3 h-3 fill-white" />
+            <span>Quick Mock</span>
           </button>
         </div>
       </header>
-
-      {/* Mobile / Tablet Navigation Bar */}
-      <div className="2xl:hidden bg-white border-b border-slate-200 px-4 py-2 flex items-center gap-2 overflow-x-auto">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeNav === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setActiveNav(item.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                isActive
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-600'
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </div>
 
       {/* Main Content Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8">
@@ -1121,7 +1112,7 @@ export function App() {
         )}
 
         {activeNav === 'tests' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             <MockTestHub
               syllabus={syllabus}
               seriesTests={seriesTests}
@@ -1134,7 +1125,15 @@ export function App() {
               onStartSeriesTest={handleStartSeriesTest}
               onInspectAttempt={setInspectedAttempt}
             />
-            <BackendWorkspace mode="student" onStartTest={setActiveTestSession} />
+            <details className="rounded-2xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
+              <summary className="cursor-pointer list-none px-4 py-3 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center justify-between">
+                <span>☁️ Cloud Account Sync & Server Test Blueprints (Optional)</span>
+                <span className="text-[11px] text-blue-600">Tap to open ▾</span>
+              </summary>
+              <div className="px-2 pb-2">
+                <BackendWorkspace mode="student" onStartTest={setActiveTestSession} />
+              </div>
+            </details>
           </div>
         )}
 
