@@ -5,15 +5,20 @@ import {
   CheckSquare,
   Clock,
   FileCheck2,
+  Flame,
   Layers,
   Play,
+  Search,
   Sliders,
   Sparkles,
   Square,
+  Target,
   Zap,
 } from 'lucide-react';
 import { SUBJECT_META } from '../../data/neetSyllabusData';
+import { OFFICIAL_NEET_2026_SYLLABUS } from '../../data/officialNeet2026Syllabus';
 import type {
+  ChapterSyllabus,
   Difficulty,
   ScheduledSeriesTest,
   SubjectId,
@@ -22,6 +27,7 @@ import type {
 } from '../../types/neet';
 
 interface MockTestHubProps {
+  syllabus: ChapterSyllabus[];
   seriesTests: ScheduledSeriesTest[];
   attempts: TestAttemptResult[];
   onStartCustomTest: (config: {
@@ -32,19 +38,39 @@ interface MockTestHubProps {
     durationMinutes: number;
     pyqOnly: boolean;
     difficultyFilter: 'all' | Difficulty;
+    chapterIds?: string[];
+    topicQuery?: string;
   }) => void;
+  onStartSubjectTest: (subjectId: SubjectId, questionCount: number, pyqOnly?: boolean) => void;
+  onStartChapterTest: (chapter: ChapterSyllabus, questionCount?: number) => void;
+  onStartTopicTest: (chapter: ChapterSyllabus, topicName: string, questionCount?: number) => void;
+  onStartOfficialUnitTest: (unitId: string, subjectId: SubjectId, unitName: string) => void;
   onStartSeriesTest: (seriesTest: ScheduledSeriesTest) => void;
   onInspectAttempt: (attempt: TestAttemptResult) => void;
 }
 
 export const MockTestHub: React.FC<MockTestHubProps> = ({
+  syllabus,
   seriesTests,
   attempts,
   onStartCustomTest,
+  onStartSubjectTest,
+  onStartChapterTest,
+  onStartTopicTest,
+  onStartOfficialUnitTest,
   onStartSeriesTest,
   onInspectAttempt,
 }) => {
-  const [activeTab, setActiveTab] = useState<'generator' | 'series' | 'history'>('generator');
+  const [activeTab, setActiveTab] = useState<
+    'chapter_topic' | 'subject_wise' | 'generator' | 'series' | 'history'
+  >('chapter_topic');
+
+  // Chapter & Topic Browser State
+  const [filterSubject, setFilterSubject] = useState<'all' | SubjectId>('all');
+  const [filterClass, setFilterClass] = useState<'all' | '11th' | '12th'>('all');
+  const [chapterSearch, setChapterSearch] = useState('');
+  const [chapterQuestionCount, setChapterQuestionCount] = useState<number>(10);
+  const [topicQuestionCount, setTopicQuestionCount] = useState<number>(5);
 
   // Custom Generator State
   const [presetMode, setPresetMode] = useState<
@@ -56,6 +82,8 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
     'botany',
     'zoology',
   ]);
+  const [selectedChapterId, setSelectedChapterId] = useState<string>('all');
+  const [selectedTopicName, setSelectedTopicName] = useState<string>('all');
   const [questionsPerSubject, setQuestionsPerSubject] = useState<number>(5);
   const [durationMinutes, setDurationMinutes] = useState<number>(25);
   const [pyqOnly, setPyqOnly] = useState<boolean>(false);
@@ -68,6 +96,8 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
     preset: 'full_neet_180' | 'mini_mock_20' | 'subject_45' | 'pyq_only'
   ) => {
     setPresetMode(preset);
+    setSelectedChapterId('all');
+    setSelectedTopicName('all');
     if (preset === 'full_neet_180') {
       setSelectedSubjects(['physics', 'chemistry', 'botany', 'zoology']);
       setQuestionsPerSubject(45);
@@ -96,9 +126,11 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
   };
 
   const toggleSubject = (subj: SubjectId) => {
+    setSelectedChapterId('all');
+    setSelectedTopicName('all');
     setSelectedSubjects((prev) => {
       if (prev.includes(subj)) {
-        if (prev.length === 1) return prev; // Keep at least 1 subject
+        if (prev.length === 1) return prev;
         return prev.filter((s) => s !== subj);
       }
       return [...prev, subj];
@@ -108,76 +140,463 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
   const totalQuestions = selectedSubjects.length * questionsPerSubject;
   const totalMaxMarks = totalQuestions * 4;
 
+  const generatorChapters = syllabus.filter((ch) => selectedSubjects.includes(ch.subjectId));
+  const activeGeneratorChapter = syllabus.find((ch) => ch.id === selectedChapterId);
+
   const handleLaunchCustom = () => {
     onStartCustomTest({
       title: customTitle.trim() || 'Auto-Generated NEET Mock Test',
       category:
-        presetMode === 'full_neet_180'
-          ? 'full_syllabus'
-          : presetMode === 'pyq_only'
-            ? 'pyq_test'
-            : 'subject_test',
+        selectedChapterId !== 'all'
+          ? 'chapter_test'
+          : presetMode === 'full_neet_180'
+            ? 'full_syllabus'
+            : presetMode === 'pyq_only'
+              ? 'pyq_test'
+              : 'subject_test',
       subjects: selectedSubjects,
       questionsPerSubject,
       durationMinutes,
       pyqOnly,
       difficultyFilter,
+      chapterIds: selectedChapterId !== 'all' ? [selectedChapterId] : undefined,
+      topicQuery: selectedTopicName !== 'all' ? selectedTopicName : undefined,
     });
   };
 
+  const filteredChapters = syllabus.filter((ch) => {
+    if (filterSubject !== 'all' && ch.subjectId !== filterSubject) return false;
+    if (filterClass !== 'all' && ch.classLevel !== filterClass) return false;
+    if (
+      chapterSearch.trim() &&
+      !ch.name.toLowerCase().includes(chapterSearch.toLowerCase()) &&
+      !ch.unitName.toLowerCase().includes(chapterSearch.toLowerCase()) &&
+      !ch.topics.some((t) => t.name.toLowerCase().includes(chapterSearch.toLowerCase()))
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  const totalTopicsCount = syllabus.reduce((acc, ch) => acc + ch.topics.length, 0);
+
   return (
-    <div className="space-y-6">
-      {/* Top Sub-Navigation */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-extrabold text-slate-900">
-            Mock Tests and Test History
-          </h1>
-          <p className="text-xs text-slate-500">
-            Generate instant custom NEET tests or attempt scheduled Minor, Semi-Major, Major & AIOT
-            papers
-          </p>
+    <div className="space-y-5">
+      {/* Top Sub-Navigation — Mobile Scrollable Pills */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <h1 className="text-lg sm:text-xl font-extrabold text-slate-900">
+              NEET Test Center — Subject, Chapter, Topic & Full Mocks
+            </h1>
+            <p className="text-xs text-slate-500">
+              Attempt 1-tap Subject-Wise, Chapter-Wise ({syllabus.length} Chapters + 50 Official Units), Topic-Wise ({totalTopicsCount} Topics) & Full 720-Mark Mocks
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl">
+        <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl overflow-x-auto no-scrollbar">
+          <button
+            onClick={() => setActiveTab('chapter_topic')}
+            className={`min-h-10 shrink-0 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+              activeTab === 'chapter_topic'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            📖 Chapter & Topic Tests ({syllabus.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('subject_wise')}
+            className={`min-h-10 shrink-0 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+              activeTab === 'subject_wise'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            🎯 Subject-Wise Tests (4)
+          </button>
           <button
             onClick={() => setActiveTab('generator')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+            className={`min-h-10 shrink-0 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
               activeTab === 'generator'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            ⚡ Auto Mock Generator
+            ⚡ Custom Mock Builder
           </button>
           <button
             onClick={() => setActiveTab('series')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+            className={`min-h-10 shrink-0 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
               activeTab === 'series'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            📅 Scheduled Tests ({seriesTests.length})
+            📅 Test Series ({seriesTests.length})
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+            className={`min-h-10 shrink-0 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
               activeTab === 'history'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            📊 Attempt History ({attempts.length})
+            📊 History ({attempts.length})
           </button>
         </div>
       </div>
 
-      {/* TAB 1: AUTOMATIC MOCK TEST GENERATOR */}
+      {/* TAB 1: CHAPTER-WISE & TOPIC-WISE TESTS (ALL CHAPTERS + ALL TOPICS + 50 OFFICIAL UNITS) */}
+      {activeTab === 'chapter_topic' && (
+        <div className="space-y-5">
+          {/* Mobile-Friendly Filter & Test Size Controls */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              {(['all', 'physics', 'chemistry', 'botany', 'zoology'] as const).map((subj) => (
+                <button
+                  key={subj}
+                  onClick={() => setFilterSubject(subj)}
+                  className={`min-h-10 shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold capitalize transition cursor-pointer ${
+                    filterSubject === subj
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  {subj === 'all'
+                    ? `All Subjects (${syllabus.length})`
+                    : `${SUBJECT_META[subj].name} (${syllabus.filter((c) => c.subjectId === subj).length})`}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={chapterSearch}
+                  onChange={(e) => setChapterSearch(e.target.value)}
+                  placeholder="Search any chapter or topic..."
+                  className="w-full min-h-10 pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <select
+                value={filterClass}
+                onChange={(e) => setFilterClass(e.target.value as 'all' | '11th' | '12th')}
+                className="min-h-10 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold bg-slate-50 text-slate-700"
+              >
+                <option value="all">Class 11th + 12th Chapters</option>
+                <option value="11th">Class 11th Chapters Only</option>
+                <option value="12th">Class 12th Chapters Only</option>
+              </select>
+
+              <select
+                value={chapterQuestionCount}
+                onChange={(e) => setChapterQuestionCount(Number(e.target.value))}
+                className="min-h-10 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold bg-blue-50/70 text-blue-900"
+              >
+                <option value={10}>Chapter Test Size: 10 Qs (15m)</option>
+                <option value={15}>Chapter Test Size: 15 Qs (20m)</option>
+                <option value={20}>Chapter Test Size: 20 Qs (25m)</option>
+                <option value={30}>Chapter Test Size: 30 Qs (35m)</option>
+              </select>
+
+              <select
+                value={topicQuestionCount}
+                onChange={(e) => setTopicQuestionCount(Number(e.target.value))}
+                className="min-h-10 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold bg-indigo-50/70 text-indigo-900"
+              >
+                <option value={5}>Topic Test Size: 5 Qs (8m)</option>
+                <option value={10}>Topic Test Size: 10 Qs (15m)</option>
+                <option value={15}>Topic Test Size: 15 Qs (20m)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Chapter Cards with Per-Chapter AND Per-Topic 1-Tap Test Buttons */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {filteredChapters.map((ch) => {
+              const meta = SUBJECT_META[ch.subjectId];
+              return (
+                <div
+                  key={ch.id}
+                  className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs hover:border-blue-300 transition flex flex-col justify-between gap-4"
+                >
+                  <div className="space-y-3">
+                    {/* Chapter Header */}
+                    <div className="flex items-start justify-between gap-2 flex-wrap">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${meta.bgLight} ${meta.textDark} ${meta.border}`}
+                          >
+                            {meta.name} · Class {ch.classLevel}
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-500">{ch.unitName}</span>
+                          {ch.highYield && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                              <Flame className="w-3 h-3 fill-amber-500 text-amber-500" />
+                              High Yield (~{ch.expectedQuestions} Qs)
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="text-base font-extrabold text-slate-900">{ch.name}</h3>
+                      </div>
+
+                      <button
+                        onClick={() => onStartChapterTest(ch, chapterQuestionCount)}
+                        className="min-h-10 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer shrink-0"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-white" />
+                        Chapter Test ({chapterQuestionCount} Qs)
+                      </button>
+                    </div>
+
+                    {/* Topic-Wise Test List inside every Chapter */}
+                    <div className="bg-slate-50 rounded-xl border border-slate-200/80 p-3 space-y-2">
+                      <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        <span>Topic-Wise Micro Tests ({ch.topics.length} Topics)</span>
+                        <span>{topicQuestionCount} Qs · +{topicQuestionCount * 4} Marks</span>
+                      </div>
+
+                      <div className="divide-y divide-slate-200/70">
+                        {ch.topics.map((topic) => (
+                          <div
+                            key={topic.id}
+                            className="py-2 first:pt-1 last:pb-0.5 flex items-center justify-between gap-2"
+                          >
+                            <div className="min-w-0 flex items-center gap-2">
+                              <Target className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                              <span className="text-xs font-semibold text-slate-800 leading-snug">
+                                {topic.name}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => onStartTopicTest(ch, topic.name, topicQuestionCount)}
+                              className="min-h-9 shrink-0 px-2.5 py-1.5 rounded-lg bg-white hover:bg-indigo-600 text-indigo-700 hover:text-white border border-indigo-200 hover:border-indigo-600 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer shadow-2xs"
+                            >
+                              <Play className="w-3 h-3 fill-current" />
+                              Topic Test ({topicQuestionCount}Q)
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quick Chapter Footer Actions */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      Mastery Accuracy: <strong className="text-slate-800">{ch.accuracyPercent}%</strong>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onStartChapterTest(ch, 10)}
+                        className="min-h-9 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs cursor-pointer"
+                      >
+                        Quick 10-Q
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onStartChapterTest(ch, 20)}
+                        className="min-h-9 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1 cursor-pointer"
+                      >
+                        <Zap className="w-3 h-3" /> Full 20-Q Chapter Mock
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Official 50 NTA/NMC Units Direct Test Grid */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-xs space-y-4">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-blue-700">
+                Complete Official NTA / NMC 50 Units
+              </span>
+              <h2 className="text-base sm:text-lg font-extrabold text-slate-900 mt-0.5">
+                Official NEET Unit-Wise Practice Tests (All 50 Units)
+              </h2>
+              <p className="text-xs text-slate-500">
+                Tap any official unit below to immediately start a 10-question unit test on mobile or desktop.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {OFFICIAL_NEET_2026_SYLLABUS.map((subject) => (
+                <div key={subject.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-2.5">
+                  <div className="font-extrabold text-sm text-slate-900 flex items-center justify-between">
+                    <span>{subject.name}</span>
+                    <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                      {subject.units.length} Units
+                    </span>
+                  </div>
+                  <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                    {subject.units.map((unit) => {
+                      const appSubjects =
+                        subject.id === 'biology'
+                          ? (['botany', 'zoology'] as SubjectId[])
+                          : ([subject.id] as SubjectId[]);
+                      return (
+                        <div
+                          key={unit.id}
+                          className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2"
+                        >
+                          <div className="text-xs font-bold text-slate-800">
+                            Unit {unit.number}: {unit.title}
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {appSubjects.map((appSubj) => (
+                              <button
+                                key={appSubj}
+                                type="button"
+                                onClick={() => onStartOfficialUnitTest(unit.id, appSubj, unit.title)}
+                                className="min-h-9 flex-1 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"
+                              >
+                                <Play className="w-3 h-3 fill-white" />
+                                {SUBJECT_META[appSubj].shortName} Test (10 Qs)
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: SUBJECT-WISE TESTS (PHYSICS, CHEMISTRY, BOTANY, ZOOLOGY) */}
+      {activeTab === 'subject_wise' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {(['physics', 'chemistry', 'botany', 'zoology'] as SubjectId[]).map((subjId) => {
+            const meta = SUBJECT_META[subjId];
+            const subjChapters = syllabus.filter((c) => c.subjectId === subjId);
+            const subjTopics = subjChapters.reduce((sum, c) => sum + c.topics.length, 0);
+
+            return (
+              <div
+                key={subjId}
+                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between gap-4"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className={`text-xs font-extrabold px-3 py-1 rounded-full border ${meta.bgLight} ${meta.textDark} ${meta.border}`}
+                    >
+                      {meta.name} · NEET Section (180 Marks)
+                    </span>
+                    <span className="text-xs font-bold text-slate-500">
+                      {subjChapters.length} Chapters · {subjTopics} Topics
+                    </span>
+                  </div>
+
+                  <h3 className="text-lg font-extrabold text-slate-900">
+                    {meta.name} Subject-Wise Mock Tests
+                  </h3>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Choose a quick 15-Q subject sprint, 25-Q half paper, full 45-Q NEET subject paper (180 Marks), or 20-Q {meta.name} PYQ-only test.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => onStartSubjectTest(subjId, 15, false)}
+                      className="min-h-12 p-3 rounded-xl border border-slate-200 hover:border-blue-400 bg-slate-50 hover:bg-blue-50/40 text-left transition cursor-pointer flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="text-xs font-extrabold text-slate-900">
+                          ⚡ 15-Q Quick Sprint
+                        </div>
+                        <div className="text-[11px] text-slate-500">60 Marks · 20 Mins</div>
+                      </div>
+                      <Play className="w-4 h-4 text-blue-600 fill-blue-600 shrink-0" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onStartSubjectTest(subjId, 25, false)}
+                      className="min-h-12 p-3 rounded-xl border border-slate-200 hover:border-blue-400 bg-slate-50 hover:bg-blue-50/40 text-left transition cursor-pointer flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="text-xs font-extrabold text-slate-900">
+                          🎯 25-Q Half Subject
+                        </div>
+                        <div className="text-[11px] text-slate-500">100 Marks · 30 Mins</div>
+                      </div>
+                      <Play className="w-4 h-4 text-blue-600 fill-blue-600 shrink-0" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onStartSubjectTest(subjId, 45, false)}
+                      className="min-h-12 p-3 rounded-xl border-2 border-blue-600 bg-blue-600 hover:bg-blue-700 text-white text-left transition cursor-pointer flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="text-xs font-extrabold">
+                          🏆 Full 45-Q NEET Paper
+                        </div>
+                        <div className="text-[11px] text-blue-100">180 Marks · 50 Mins</div>
+                      </div>
+                      <Play className="w-4 h-4 fill-white shrink-0" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onStartSubjectTest(subjId, 20, true)}
+                      className="min-h-12 p-3 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-950 text-left transition cursor-pointer flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="text-xs font-extrabold">
+                          📜 20-Q {meta.shortName} PYQ Test
+                        </div>
+                        <div className="text-[11px] text-indigo-700">2015–2025 PYQs · 25m</div>
+                      </div>
+                      <Play className="w-4 h-4 text-indigo-700 fill-indigo-700 shrink-0" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Chapter Pills inside Subject Card */}
+                <div className="pt-3 border-t border-slate-100">
+                  <div className="text-[11px] font-bold uppercase text-slate-400 mb-2">
+                    Or tap any {meta.name} chapter for an instant 10-Q test:
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {subjChapters.map((ch) => (
+                      <button
+                        key={ch.id}
+                        type="button"
+                        onClick={() => onStartChapterTest(ch, 10)}
+                        className="min-h-8 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-900 text-slate-700 hover:text-white text-[11px] font-semibold transition cursor-pointer"
+                      >
+                        {ch.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* TAB 3: AUTOMATIC CUSTOM MOCK TEST GENERATOR */}
       {activeTab === 'generator' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left 2 Columns: Configuration Controls */}
-          <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
+          <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-xs space-y-6">
             <div>
               <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full mb-2">
                 <Sparkles className="w-3.5 h-3.5" />
@@ -208,7 +627,7 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
                 {
                   id: 'pyq_only',
                   title: 'NEET PYQ-Only Benchmark',
-                  desc: 'PYQ-tagged questions with recorded sources',
+                  desc: '2015–2025 Official PYQs across subjects',
                 },
               ].map((item) => (
                 <button
@@ -243,7 +662,7 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
                     <button
                       key={subj}
                       onClick={() => toggleSubject(subj)}
-                      className={`p-3 rounded-xl border font-bold text-xs flex items-center gap-2 transition cursor-pointer ${
+                      className={`min-h-11 p-3 rounded-xl border font-bold text-xs flex items-center gap-2 transition cursor-pointer ${
                         isSelected
                           ? `${meta.bgLight} ${meta.textDark} ${meta.border} ring-1 ring-blue-500/30`
                           : 'bg-slate-50 text-slate-500 border-slate-200'
@@ -261,8 +680,67 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
               </div>
             </div>
 
+            {/* Chapter & Topic Scope Selector inside Custom Generator */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  3. Chapter Filter (Optional — All or Specific Chapter)
+                </label>
+                <select
+                  value={selectedChapterId}
+                  onChange={(e) => {
+                    const chId = e.target.value;
+                    setSelectedChapterId(chId);
+                    setSelectedTopicName('all');
+                    if (chId !== 'all') {
+                      const chObj = syllabus.find((c) => c.id === chId);
+                      if (chObj) {
+                        setSelectedSubjects([chObj.subjectId]);
+                        setCustomTitle(`Chapter Mock: ${chObj.name}`);
+                      }
+                    }
+                  }}
+                  className="w-full min-h-10 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold bg-slate-50 text-slate-800"
+                >
+                  <option value="all">All Selected Subject Chapters</option>
+                  {generatorChapters.map((ch) => (
+                    <option key={ch.id} value={ch.id}>
+                      [{SUBJECT_META[ch.subjectId].shortName}] {ch.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  4. Topic Filter (Optional — Specific Subtopic)
+                </label>
+                <select
+                  value={selectedTopicName}
+                  disabled={!activeGeneratorChapter}
+                  onChange={(e) => {
+                    const tName = e.target.value;
+                    setSelectedTopicName(tName);
+                    if (tName !== 'all' && activeGeneratorChapter) {
+                      setCustomTitle(`Topic Test: ${tName} (${activeGeneratorChapter.name})`);
+                    }
+                  }}
+                  className="w-full min-h-10 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold bg-slate-50 text-slate-800 disabled:opacity-50"
+                >
+                  <option value="all">
+                    {activeGeneratorChapter ? 'All Topics in Chapter' : 'Select a chapter first'}
+                  </option>
+                  {activeGeneratorChapter?.topics.map((topic) => (
+                    <option key={topic.id} value={topic.name}>
+                      {topic.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             {/* Sliders & Options */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   Questions per Subject
@@ -270,7 +748,7 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
                 <select
                   value={questionsPerSubject}
                   onChange={(e) => setQuestionsPerSubject(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold bg-slate-50 text-slate-800"
+                  className="w-full min-h-10 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold bg-slate-50 text-slate-800"
                 >
                   <option value={5}>5 Qs / Subject</option>
                   <option value={10}>10 Qs / Subject</option>
@@ -287,8 +765,9 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
                 <select
                   value={durationMinutes}
                   onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold bg-slate-50 text-slate-800"
+                  className="w-full min-h-10 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold bg-slate-50 text-slate-800"
                 >
+                  <option value={10}>10 Minutes</option>
                   <option value={15}>15 Minutes</option>
                   <option value={25}>25 Minutes</option>
                   <option value={50}>50 Minutes</option>
@@ -305,27 +784,39 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
                 <select
                   value={difficultyFilter}
                   onChange={(e) => setDifficultyFilter(e.target.value as 'all' | Difficulty)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold bg-slate-50 text-slate-800"
+                  className="w-full min-h-10 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold bg-slate-50 text-slate-800"
                 >
                   <option value="all">Balanced NEET Mix (Easy+Med+Hard)</option>
                   <option value="easy">NCERT Foundation (Easy)</option>
                   <option value="medium">Standard NEET Level (Medium)</option>
-                  <option value="hard">Hard</option>
+                  <option value="hard">Rank Booster (Hard)</option>
                 </select>
               </div>
             </div>
 
-            {/* Test Title Input */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Custom Test Title
+            {/* PYQ Only Toggle & Custom Title */}
+            <div className="space-y-3">
+              <label className="flex items-center gap-2.5 text-xs font-bold text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={pyqOnly}
+                  onChange={(e) => setPyqOnly(e.target.checked)}
+                  className="w-4 h-4 accent-blue-600 rounded"
+                />
+                <span>Include Only Official NEET Previous Year Questions (2015–2025 PYQs)</span>
               </label>
-              <input
-                type="text"
-                value={customTitle}
-                onChange={(e) => setCustomTitle(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:border-blue-600"
-              />
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Custom Test Title
+                </label>
+                <input
+                  type="text"
+                  value={customTitle}
+                  onChange={(e) => setCustomTitle(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:border-blue-600"
+                />
+              </div>
             </div>
           </div>
 
@@ -364,23 +855,29 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
 
               <div className="pt-2 space-y-2 text-xs text-slate-300">
                 <div className="flex items-center justify-between py-1.5 border-b border-slate-800">
+                  <span>Scope:</span>
+                  <span className="font-bold text-white truncate max-w-[180px]">
+                    {selectedTopicName !== 'all'
+                      ? selectedTopicName
+                      : activeGeneratorChapter
+                        ? activeGeneratorChapter.name
+                        : 'Full Selected Subjects'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between py-1.5 border-b border-slate-800">
                   <span>Marking Pattern:</span>
                   <span className="font-bold text-emerald-400">+4 Correct, -1 Wrong, 0 Left</span>
                 </div>
-                <div className="flex items-center justify-between py-1.5 border-b border-slate-800">
-                  <span>NTA Question Palette:</span>
-                  <span className="font-bold text-white">Enabled (1–{totalQuestions})</span>
-                </div>
                 <div className="flex items-center justify-between py-1.5">
-                  <span>Score & Solutions:</span>
-                  <span className="font-bold text-blue-400">Enabled</span>
+                  <span>Mobile & Desktop CBT:</span>
+                  <span className="font-bold text-blue-400">Enabled (1–{totalQuestions})</span>
                 </div>
               </div>
             </div>
 
             <button
               onClick={handleLaunchCustom}
-              className="mt-6 w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg transition cursor-pointer"
+              className="mt-6 w-full min-h-12 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg transition cursor-pointer"
             >
               <Zap className="w-4 h-4 fill-white" />
               Generate & Start CBT Exam Now
@@ -389,7 +886,7 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
         </div>
       )}
 
-      {/* TAB 2: SCHEDULED TESTS */}
+      {/* TAB 4: SCHEDULED TESTS */}
       {activeTab === 'series' && (
         <div className="space-y-4">
           {seriesTests.length === 0 && (
@@ -400,7 +897,7 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
           {seriesTests.map((st) => (
             <div
               key={st.id}
-              className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:border-blue-300 transition flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+              className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs hover:border-blue-300 transition flex flex-col md:flex-row md:items-center md:justify-between gap-4"
             >
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -420,7 +917,7 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
                   <strong>Syllabus:</strong> {st.syllabusSummary}
                 </p>
 
-                <div className="flex items-center gap-4 text-xs text-slate-600 pt-1">
+                <div className="flex items-center gap-4 text-xs text-slate-600 pt-1 flex-wrap">
                   <span className="flex items-center gap-1 font-semibold">
                     <Layers className="w-3.5 h-3.5 text-blue-600" /> {st.questionCount} Questions
                   </span>
@@ -447,7 +944,7 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
 
                 <button
                   onClick={() => onStartSeriesTest(st)}
-                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs md:text-sm flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                  className="min-h-11 flex-1 md:flex-initial justify-center px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs md:text-sm flex items-center gap-1.5 shadow-sm transition cursor-pointer"
                 >
                   <Play className="w-4 h-4 fill-white" />
                   {st.status === 'completed' ? 'Re-Attempt Test' : 'Start Test Now'}
@@ -458,7 +955,7 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
         </div>
       )}
 
-      {/* TAB 3: ATTEMPT HISTORY & REPORTS */}
+      {/* TAB 5: ATTEMPT HISTORY & REPORTS */}
       {activeTab === 'history' && (
         <div className="space-y-4">
           {attempts
@@ -467,7 +964,7 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
             .map((att) => (
               <div
                 key={att.id}
-                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+                className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-4"
               >
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -493,7 +990,7 @@ export const MockTestHub: React.FC<MockTestHubProps> = ({
 
                 <button
                   onClick={() => onInspectAttempt(att)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                  className="min-h-11 justify-center px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shrink-0"
                 >
                   <FileCheck2 className="w-4 h-4" />
                   View Scorecard & Solutions

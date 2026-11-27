@@ -924,6 +924,7 @@ export function generateTestQuestionSet(options: {
   subjects: SubjectId[];
   questionsPerSubject: number;
   chapterIds?: string[];
+  topicQuery?: string;
   pyqOnly?: boolean;
   difficultyFilter?: 'all' | Difficulty;
 }): Question[] {
@@ -932,6 +933,7 @@ export function generateTestQuestionSet(options: {
     subjects,
     questionsPerSubject,
     chapterIds,
+    topicQuery,
     pyqOnly = false,
     difficultyFilter = 'all',
   } = options;
@@ -946,6 +948,17 @@ export function generateTestQuestionSet(options: {
   const approvedPool = [...combinedMap.values()].filter((q) => q.reviewStatus === 'approved');
   const expandedChapterSet =
     chapterIds && chapterIds.length > 0 ? expandChapterIds(chapterIds) : null;
+
+  const topicKeywords = (topicQuery || '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 3 && !['and', 'the', 'for', 'with', 'its', 'laws', 'law'].includes(token));
+
+  const matchesTopic = (q: Question): boolean => {
+    if (topicKeywords.length === 0) return true;
+    const haystack = `${q.topicName} ${q.chapterName} ${q.stem} ${q.explanation}`.toLowerCase();
+    return topicKeywords.some((kw) => haystack.includes(kw));
+  };
 
   const result: Question[] = [];
 
@@ -964,6 +977,28 @@ export function generateTestQuestionSet(options: {
         }
       }
     };
+
+    // Tier 0: Exact Topic + Chapter/Unit + PYQ + Difficulty match
+    if (topicKeywords.length > 0) {
+      const tier0 = subjectPool.filter((q) => {
+        if (expandedChapterSet && !expandedChapterSet.has(q.chapterId)) return false;
+        if (!matchesTopic(q)) return false;
+        if (pyqOnly && !q.isPyq) return false;
+        if (difficultyFilter !== 'all' && q.difficulty !== difficultyFilter) return false;
+        return true;
+      });
+      addFromList(tier0);
+
+      // Tier 0b: Topic match across the subject if chapter had fewer exact topic matches
+      if (picked.length < questionsPerSubject) {
+        const tier0b = subjectPool.filter((q) => {
+          if (!matchesTopic(q)) return false;
+          if (pyqOnly && !q.isPyq) return false;
+          return true;
+        });
+        addFromList(tier0b);
+      }
+    }
 
     // Tier 1: Exact match (Subject + Chapter/Unit + PYQ filter + Difficulty filter)
     const tier1 = subjectPool.filter((q) => {

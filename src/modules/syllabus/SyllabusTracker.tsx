@@ -23,7 +23,9 @@ interface SyllabusTrackerProps {
   onToggleTopicCompleted: (chapterId: string, topicId: string) => void;
   onIncrementNcertRead: (chapterId: string) => void;
   onToggleChapterFlag: (chapterId: string, field: 'pyqSolved' | 'formulaSheetRevised') => void;
-  onStartChapterTest: (chapter: ChapterSyllabus) => void;
+  onStartChapterTest: (chapter: ChapterSyllabus, questionCount?: number) => void;
+  onStartTopicTest: (chapter: ChapterSyllabus, topicName: string, questionCount?: number) => void;
+  onStartSubjectTest: (subjectId: SubjectId, questionCount: number, pyqOnly?: boolean) => void;
 }
 
 export const SyllabusTracker: React.FC<SyllabusTrackerProps> = ({
@@ -36,6 +38,8 @@ export const SyllabusTracker: React.FC<SyllabusTrackerProps> = ({
   onIncrementNcertRead,
   onToggleChapterFlag,
   onStartChapterTest,
+  onStartTopicTest,
+  onStartSubjectTest,
 }) => {
   const [selectedSubject, setSelectedSubject] = useState<'all' | SubjectId>('all');
   const [selectedClass, setSelectedClass] = useState<'all' | '11th' | '12th'>('all');
@@ -106,8 +110,8 @@ export const SyllabusTracker: React.FC<SyllabusTrackerProps> = ({
           </p>
         </div>
 
-        {/* Subject Quick Summary Pills */}
-        <div className="flex flex-wrap gap-2">
+        {/* Subject Quick Summary & 1-Tap Subject Test Pills */}
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
           {(['physics', 'chemistry', 'botany', 'zoology'] as SubjectId[]).map((subjId) => {
             const meta = SUBJECT_META[subjId];
             const total = syllabus.filter((c) => c.subjectId === subjId).length;
@@ -117,9 +121,19 @@ export const SyllabusTracker: React.FC<SyllabusTrackerProps> = ({
             return (
               <div
                 key={subjId}
-                className={`px-3 py-2 rounded-xl border text-xs font-bold ${meta.bgLight} ${meta.textDark} ${meta.border}`}
+                className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col sm:flex-row sm:items-center gap-2 ${meta.bgLight} ${meta.textDark} ${meta.border}`}
               >
-                {meta.name}: {done}/{total} Done
+                <span>
+                  {meta.name}: {done}/{total} Done
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onStartSubjectTest(subjId, 15, false)}
+                  className="min-h-8 px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer"
+                >
+                  <Play className="w-3 h-3 fill-white" />
+                  {meta.shortName} Test
+                </button>
               </div>
             );
           })}
@@ -285,31 +299,44 @@ export const SyllabusTracker: React.FC<SyllabusTrackerProps> = ({
                 {/* Chapter Title */}
                 <h3 className="text-base font-bold text-slate-900 mb-3">{ch.name}</h3>
 
-                {/* Subtopics Checklist */}
-                <div className="space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-100 mb-3">
-                  <div className="text-[11px] font-bold uppercase text-slate-400 mb-1">
-                    Topics in this starter outline:
+                {/* Subtopics Checklist with 1-Tap Topic Test Buttons */}
+                <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-100 mb-3">
+                  <div className="flex items-center justify-between text-[11px] font-bold uppercase text-slate-400 mb-1">
+                    <span>Topics & Topic-Wise Tests ({ch.topics.length}):</span>
+                    <span>Tap Test for 5-Q Quiz</span>
                   </div>
                   {ch.topics.map((topic) => (
                     <div
                       key={topic.id}
-                      onClick={() => onToggleTopicCompleted(ch.id, topic.id)}
-                      className="flex items-center gap-2 text-xs cursor-pointer hover:text-blue-600 transition"
+                      className="flex items-center justify-between gap-2 py-1 border-b last:border-b-0 border-slate-200/60"
                     >
-                      {topic.completed ? (
-                        <CheckSquare className="w-4 h-4 text-emerald-600 shrink-0" />
-                      ) : (
-                        <Square className="w-4 h-4 text-slate-400 shrink-0" />
-                      )}
-                      <span
-                        className={
-                          topic.completed
-                            ? 'text-slate-600 line-through'
-                            : 'text-slate-800 font-medium'
-                        }
+                      <div
+                        onClick={() => onToggleTopicCompleted(ch.id, topic.id)}
+                        className="flex items-center gap-2 text-xs cursor-pointer hover:text-blue-600 transition min-w-0 flex-1"
                       >
-                        {topic.name}
-                      </span>
+                        {topic.completed ? (
+                          <CheckSquare className="w-4 h-4 text-emerald-600 shrink-0" />
+                        ) : (
+                          <Square className="w-4 h-4 text-slate-400 shrink-0" />
+                        )}
+                        <span
+                          className={
+                            topic.completed
+                              ? 'text-slate-600 line-through'
+                              : 'text-slate-800 font-medium'
+                          }
+                        >
+                          {topic.name}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onStartTopicTest(ch, topic.name, 5)}
+                        className="min-h-8 shrink-0 px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-600 text-indigo-700 hover:text-white border border-indigo-200 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
+                      >
+                        <Play className="w-2.5 h-2.5 fill-current" />
+                        Topic Test
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -320,7 +347,7 @@ export const SyllabusTracker: React.FC<SyllabusTrackerProps> = ({
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => onIncrementNcertRead(ch.id)}
-                    className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                    className="min-h-9 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
                     title="Click to increment NCERT Reading Count"
                   >
                     <BookCheck className="w-3.5 h-3.5" />
@@ -330,7 +357,7 @@ export const SyllabusTracker: React.FC<SyllabusTrackerProps> = ({
 
                   <button
                     onClick={() => onToggleChapterFlag(ch.id, 'pyqSolved')}
-                    className={`px-2.5 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1 transition cursor-pointer ${
+                    className={`min-h-9 px-2.5 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1 transition cursor-pointer ${
                       ch.pyqSolved
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                         : 'bg-slate-50 text-slate-500 border-slate-200'
@@ -342,7 +369,7 @@ export const SyllabusTracker: React.FC<SyllabusTrackerProps> = ({
 
                   <button
                     onClick={() => onToggleChapterFlag(ch.id, 'formulaSheetRevised')}
-                    className={`px-2.5 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1 transition cursor-pointer ${
+                    className={`min-h-9 px-2.5 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1 transition cursor-pointer ${
                       ch.formulaSheetRevised
                         ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
                         : 'bg-slate-50 text-slate-500 border-slate-200'
@@ -353,13 +380,21 @@ export const SyllabusTracker: React.FC<SyllabusTrackerProps> = ({
                   </button>
                 </div>
 
-                <button
-                  onClick={() => onStartChapterTest(ch)}
-                  className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-blue-600 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
-                >
-                  <Play className="w-3.5 h-3.5 fill-white" />
-                  Practice Test
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => onStartChapterTest(ch, 10)}
+                    className="min-h-9 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-blue-600 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-white" />
+                    Chapter Test (10Q)
+                  </button>
+                  <button
+                    onClick={() => onStartChapterTest(ch, 20)}
+                    className="min-h-9 px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold text-xs transition cursor-pointer"
+                  >
+                    20Q
+                  </button>
+                </div>
               </div>
             </div>
           );

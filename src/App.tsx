@@ -621,20 +621,71 @@ export function App() {
     return false;
   }
 
-  const handleStartChapterTest = (chapter: ChapterSyllabus) => {
+  const handleStartSubjectTest = (
+    subjectId: SubjectId,
+    questionCount = 15,
+    pyqOnly = false
+  ) => {
+    const bank = getEffectiveQuestionBank();
+    const qs = generateTestQuestionSet({
+      allQuestions: bank,
+      subjects: [subjectId],
+      questionsPerSubject: questionCount,
+      pyqOnly,
+    });
+    if (!ensureQuestionCount(qs, questionCount)) return;
+    setActiveTestSession({
+      id: `test-subj-${subjectId}-${Date.now()}`,
+      title: `${SUBJECT_META[subjectId].name} ${pyqOnly ? 'PYQ ' : ''}Subject Test (${qs.length} Qs · ${qs.length * 4} Marks)`,
+      category: pyqOnly ? 'pyq_test' : 'subject_test',
+      durationMinutes: Math.max(15, Math.round(qs.length * 1.2)),
+      positiveMarks: 4,
+      negativeMarks: 1,
+      questions: qs,
+      startedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleStartChapterTest = (chapter: ChapterSyllabus, questionCount = 10) => {
     const bank = getEffectiveQuestionBank();
     const qs = generateTestQuestionSet({
       allQuestions: bank,
       subjects: [chapter.subjectId],
-      questionsPerSubject: 10,
+      questionsPerSubject: questionCount,
       chapterIds: [chapter.id],
     });
-    if (!ensureQuestionCount(qs, 10)) return;
+    if (!ensureQuestionCount(qs, questionCount)) return;
     setActiveTestSession({
       id: `test-ch-${chapter.id}-${Date.now()}`,
-      title: `Chapter Test: ${chapter.name} (${SUBJECT_META[chapter.subjectId].name})`,
+      title: `Chapter Test: ${chapter.name} (${SUBJECT_META[chapter.subjectId].name} · ${qs.length} Qs)`,
       category: 'chapter_test',
-      durationMinutes: 15,
+      durationMinutes: Math.max(12, Math.round(qs.length * 1.3)),
+      positiveMarks: 4,
+      negativeMarks: 1,
+      questions: qs,
+      startedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleStartTopicTest = (
+    chapter: ChapterSyllabus,
+    topicName: string,
+    questionCount = 5
+  ) => {
+    const bank = getEffectiveQuestionBank();
+    const qs = generateTestQuestionSet({
+      allQuestions: bank,
+      subjects: [chapter.subjectId],
+      questionsPerSubject: questionCount,
+      chapterIds: [chapter.id],
+      topicQuery: topicName,
+    });
+    if (!ensureQuestionCount(qs, questionCount)) return;
+    setActiveTestSession({
+      id: `test-topic-${chapter.id}-${Date.now()}`,
+      title: `Topic Test: ${topicName} (${chapter.name} · ${qs.length} Qs)`,
+      category: 'chapter_test',
+      durationMinutes: Math.max(8, Math.round(qs.length * 1.5)),
       positiveMarks: 4,
       negativeMarks: 1,
       questions: qs,
@@ -682,6 +733,8 @@ export function App() {
     durationMinutes: number;
     pyqOnly: boolean;
     difficultyFilter: 'all' | Difficulty;
+    chapterIds?: string[];
+    topicQuery?: string;
   }) => {
     const startLocalCustom = () => {
       const bank = getEffectiveQuestionBank();
@@ -689,6 +742,8 @@ export function App() {
         allQuestions: bank,
         subjects: config.subjects,
         questionsPerSubject: config.questionsPerSubject,
+        chapterIds: config.chapterIds,
+        topicQuery: config.topicQuery,
         pyqOnly: config.pyqOnly,
         difficultyFilter: config.difficultyFilter,
       });
@@ -704,7 +759,7 @@ export function App() {
         startedAt: new Date().toISOString(),
       });
     };
-    if (getApiToken()) {
+    if (getApiToken() && !config.chapterIds?.length && !config.topicQuery) {
       const subjectCounts = Object.fromEntries(config.subjects.map((subject) => [subject, config.questionsPerSubject]));
       void launchBackendTest(
         {
@@ -1031,7 +1086,7 @@ export function App() {
       </div>
 
       {/* Main Content Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8">
         {activeNav === 'dashboard' && (
           <StudentDashboard
             syllabus={syllabus}
@@ -1041,6 +1096,9 @@ export function App() {
             onToggleDailyTask={handleToggleDailyTask}
             onAddDailyTask={handleAddDailyTask}
             onQuickStartTest={handleQuickStartTest}
+            onStartSubjectTest={handleStartSubjectTest}
+            onStartChapterTest={handleStartChapterTest}
+            onStartTopicTest={handleStartTopicTest}
             onNavigateTab={setActiveNav}
             onInspectAttempt={setInspectedAttempt}
           />
@@ -1057,15 +1115,22 @@ export function App() {
             onIncrementNcertRead={handleIncrementNcertRead}
             onToggleChapterFlag={handleToggleChapterFlag}
             onStartChapterTest={handleStartChapterTest}
+            onStartTopicTest={handleStartTopicTest}
+            onStartSubjectTest={handleStartSubjectTest}
           />
         )}
 
         {activeNav === 'tests' && (
           <div className="space-y-6">
             <MockTestHub
+              syllabus={syllabus}
               seriesTests={seriesTests}
               attempts={attempts}
               onStartCustomTest={handleStartCustomTest}
+              onStartSubjectTest={handleStartSubjectTest}
+              onStartChapterTest={handleStartChapterTest}
+              onStartTopicTest={handleStartTopicTest}
+              onStartOfficialUnitTest={handleStartOfficialUnitTest}
               onStartSeriesTest={handleStartSeriesTest}
               onInspectAttempt={setInspectedAttempt}
             />
@@ -1107,8 +1172,55 @@ export function App() {
         )}
       </main>
 
+      {/* Fixed Bottom Mobile App Navigation Bar (Thumb-Friendly for Mobile Users) */}
+      <nav
+        aria-label="Mobile bottom navigation"
+        className="md:hidden fixed inset-x-0 bottom-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-1.5 pt-1.5 pb-[max(0.4rem,env(safe-area-inset-bottom))] grid grid-cols-5 gap-1 shadow-[0_-4px_16px_rgba(15,23,42,0.06)]"
+      >
+        {[
+          { id: 'dashboard', shortLabel: 'Home', icon: LayoutDashboard },
+          { id: 'tests', shortLabel: 'Tests', icon: ClipboardCheck },
+          { id: 'syllabus', shortLabel: 'Chapters', icon: BookOpen },
+          { id: 'pyq', shortLabel: 'PYQ Bank', icon: Layers },
+          {
+            id: 'revision',
+            shortLabel: 'Mistakes',
+            icon: FileWarning,
+            badge: mistakes.filter((m) => !m.resolved).length,
+          },
+        ].map((item) => {
+          const Icon = item.icon;
+          const isActive = activeNav === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                setActiveNav(item.id);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className={`relative min-h-12 rounded-xl py-1 px-1 flex flex-col items-center justify-center gap-0.5 transition cursor-pointer ${
+                isActive
+                  ? 'bg-blue-50 text-blue-700 font-extrabold'
+                  : 'text-slate-500 hover:text-slate-900 font-semibold'
+              }`}
+            >
+              <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-slate-500'}`} />
+              <span className="text-[10px] leading-tight truncate max-w-full">
+                {item.shortLabel}
+              </span>
+              {item.badge !== undefined && item.badge > 0 && (
+                <span className="absolute top-1 right-2 px-1 min-w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-extrabold flex items-center justify-center">
+                  {item.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
+
       {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 py-4 px-6 text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between max-w-7xl w-full mx-auto">
+      <footer className="hidden md:flex bg-white border-t border-slate-200 py-4 px-6 text-center text-xs text-slate-500 flex-col sm:flex-row items-center justify-between max-w-7xl w-full mx-auto">
         <div className="flex items-center gap-2 font-semibold text-slate-700">
           <Sparkles className="w-3.5 h-3.5 text-blue-600" />
           NEET Prep Pro 2027 — Personal Dropper Test Series & Learning Platform
